@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "PakHIMS",
+    "slug": "online-appointment-copy",
+    "version": "1.0.2",
+    "entryPoint": "./node_modules/expo-router/entry",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "myapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "extra": {
+      "API_BASE_URL": "https://pakhims.com",
+      "PROJECT_ID": "65ec919ffc0cf5f31b2a986b",
+      "CLOUDINARY_URL": "https://api.cloudinary.com/v1_1/dd1chofv4/image/upload",
+      "CLOUDINARY_PRESET": "PAKHIMS",
+      "CLOUDINARY_API_KEY": "881548575377244",
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "9d1901ab-f97c-4bc8-9020-b1d949e445d1"
+      }
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.HIMS.PakHIMS",
+      "versionCode": 3,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MICROPHONE",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/adaptive-icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "owner": "vageta"
+  }
+}
