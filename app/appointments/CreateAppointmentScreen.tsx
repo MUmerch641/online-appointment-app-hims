@@ -106,7 +106,10 @@ interface NavigationProps {
 
 const CreateAppointmentScreen: React.FC = () => {
   const router = useRouter();
-  const { patientId = "", patientName = "", mrn = "" } = useLocalSearchParams<RouteParams>();
+  const params = useLocalSearchParams();
+  const patientId = params.patientId as string || "";
+  const patientName = params.patientName as string || "";
+  const mrn = params.mrn as string || "";
 
   const CURRENT_DATE = new Date();
   const TODAY_DATE_STRING = CURRENT_DATE.toISOString().split("T")[0];

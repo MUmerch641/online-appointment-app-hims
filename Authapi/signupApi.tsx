@@ -38,7 +38,7 @@ export const verifyToken = async (mobileNo: string, token: number) => {
       mobileNo,
       token,
     });
-    console.log("response", response);
+    ("response", response);
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {

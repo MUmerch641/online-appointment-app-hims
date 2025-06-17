@@ -225,7 +225,7 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
   }, [closeWelcomeModal])
 
   // Memoized API base URL
-  const apiBaseUrl = useMemo(() =>
+  const apiBaseUrl = useMemo(() => 
     Constants.expoConfig?.extra?.API_BASE_URL || process.env.API_BASE_URL,
     []
   )
@@ -271,15 +271,12 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
       setLoading(false)
     }
   }, [apiBaseUrl])
-  // Fetch hospitals based on selected city or all hospitals if no city provided
-  const fetchHospitals = useCallback(async (cityName?: string) => {
+
+  // Fetch hospitals based on selected city
+  const fetchHospitals = useCallback(async (cityName: string) => {
     setHospitalsLoading(true)
     try {
-      const url = cityName
-        ? `${apiBaseUrl}${HOSPITAL_API_ENDPOINT}?city=${encodeURIComponent(cityName)}`
-        : `${apiBaseUrl}${HOSPITAL_API_ENDPOINT}`
-
-      const response = await fetch(url, {
+      const response = await fetch(`${apiBaseUrl}${HOSPITAL_API_ENDPOINT}?city=${encodeURIComponent(cityName)}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -306,41 +303,34 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
       setHospitalsLoading(false)
     }
   }, [apiBaseUrl])
+
   useEffect(() => {
     fetchCitiesData()
-    // Fetch all hospitals by default
-    fetchHospitals()
-  }, [fetchCitiesData, fetchHospitals])
+  }, [fetchCitiesData])
+
   // Handle city search and filtering
   const handleSearch = useCallback((text: string): void => {
     setSearchQuery(text)
 
     if (text.length > 0) {
-      const filtered = allCities.filter((city) =>
-        city.name.toLowerCase().includes(text.toLowerCase()) ||
-        city.province.toLowerCase().includes(text.toLowerCase())
+      const filtered = allCities.filter((city) => 
+        city.name.toLowerCase().includes(text.toLowerCase())
       )
-      setFilteredCities(filtered.slice(0, 10)) // Limit results for performance
+      setFilteredCities(filtered)
     } else {
       setFilteredCities([])
       setSelectedCity(null)
-      // Fetch all hospitals when search is cleared
-      fetchHospitals()
+      setHospitals([])
     }
-  }, [allCities, fetchHospitals])
+  }, [allCities])
 
   // Handle city selection from autocomplete
   const handleSelectCity = useCallback((city: City): void => {
     setSelectedCity(city)
     setSearchQuery(city.name)
-    setFilteredCities([]) // Clear the dropdown
+    setFilteredCities([])
     fetchHospitals(city.name)
     Keyboard.dismiss()
-
-    // Blur the input to hide keyboard
-    if (searchInputRef.current) {
-      searchInputRef.current.blur()
-    }
   }, [fetchHospitals])
 
   // Handle hospital selection
@@ -359,35 +349,36 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
   const handleLogin = useCallback((): void => {
     router.push("/auth/LoginScreen")
   }, [])
+
   // Clear search
   const clearSearch = useCallback((): void => {
     setSearchQuery("")
     setFilteredCities([])
     setSelectedCity(null)
-    // Fetch all hospitals when search is cleared
-    fetchHospitals()
+    setHospitals([])
     Keyboard.dismiss()
-  }, [fetchHospitals])
+  }, [])
 
   // Memoized hospital item renderer
   const renderHospitalItem = useCallback(({ item, index }: { item: Hospital; index: number }) => (
     <Animatable.View animation="fadeInUp" delay={index * 50} duration={300} useNativeDriver>
-      <HospitalCard
-        hospital={item}
-        onSelect={() => handleSelectHospital(item)}
+      <HospitalCard 
+        hospital={item} 
+        onSelect={() => handleSelectHospital(item)} 
       />
     </Animatable.View>
   ), [handleSelectHospital])
 
   // Memoized key extractor for hospitals
   const keyExtractor = useCallback((item: Hospital) => item._id, [])
+
   // Memoized empty state for hospitals
   const renderEmptyHospitalState = useCallback(() => (
     <View style={styles.emptyContainer}>
       <Feather name="plus" size={60} color="#CCCCCC" />
       <Text style={styles.emptyTitle}>No hospitals found</Text>
       <Text style={styles.emptySubtitle}>
-        {selectedCity ? `No hospitals found in ${selectedCity.name}` : "No hospitals available at the moment"}
+        {selectedCity ? `No hospitals found in ${selectedCity.name}` : "Select a city to see hospitals"}
       </Text>
     </View>
   ), [selectedCity])
@@ -560,54 +551,49 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
         useNativeDriver
       >
         <View style={styles.autocompleteContainer}>
-          {/* Custom Autocomplete Implementation */}
-          <View style={styles.searchInputContainer}>
-            <Feather name="search" size={20} color="#666" style={styles.searchIcon} />
-            <TextInput
-              ref={searchInputRef}
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={handleSearch}
-              placeholder="Search for your city"
-              placeholderTextColor="#999"
-              returnKeyType="search"
-              autoCorrect={false}
-              autoCapitalize="words"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
-                <Feather name="x" size={18} color="#999" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Custom Dropdown */}
-          {filteredCities.length > 0 && searchQuery.length > 0 && (
-            <ScrollView
-              style={styles.autocompleteList}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled={true}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.autocompleteScrollContent}
-            >
-              {filteredCities.map((city) => (
+          <Autocomplete
+            data={filteredCities}
+            defaultValue={searchQuery}
+            onChangeText={handleSearch}
+            placeholder="Search for your city"
+            placeholderTextColor="#999"
+            flatListProps={{
+              keyExtractor: (item: City) => `${item.name}-${item.province}`,
+              renderItem: ({ item }: { item: City }) => (
                 <TouchableOpacity
-                  key={`${city.name}-${city.province}`}
                   style={styles.autocompleteItem}
-                  onPress={() => handleSelectCity(city)}
-                  activeOpacity={0.7}
+                  onPress={() => handleSelectCity(item)}
                 >
                   <View style={styles.autocompleteItemContent}>
                     <Feather name="map-pin" size={16} color="#4A80F0" />
                     <View style={styles.autocompleteTextContainer}>
-                      <Text style={styles.autocompleteCityName}>{city.name}</Text>
-                      <Text style={styles.autocompleteProvince}>{city.province}</Text>
+                      <Text style={styles.autocompleteCityName}>{item.name}</Text>
+                      <Text style={styles.autocompleteProvince}>{item.province}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}        </View>
+              ),
+              style: styles.autocompleteList,
+            }}
+            inputContainerStyle={styles.autocompleteInputContainer}
+            renderTextInput={(props) => (
+              <View style={styles.searchInputContainer}>
+                <Feather name="search" size={20} color="#666" style={styles.searchIcon} />
+                <TextInput
+                  {...props}
+                  ref={searchInputRef}
+                  style={styles.searchInput}
+                  returnKeyType="search"
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+                    <Feather name="x" size={18} color="#999" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          />
+        </View>
       </Animatable.View>
 
       {selectedCity && (
@@ -624,7 +610,7 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
         </View>
       ) : error ? (
         renderError()
-      ) : (
+      ) : selectedCity ? (
         hospitalsLoading ? (
           renderHospitalLoadingSkeletons
         ) : (
@@ -645,6 +631,14 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
             removeClippedSubviews={true}
           />
         )
+      ) : (
+        <View style={styles.noSelectionContainer}>
+          <Feather name="search" size={60} color="#CCCCCC" />
+          <Text style={styles.noSelectionTitle}>Search for a city</Text>
+          <Text style={styles.noSelectionSubtitle}>
+            Start typing to find hospitals in your city
+          </Text>
+        </View>
       )}
     </SafeAreaView>
   )
@@ -710,19 +704,14 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: 20,
     marginBottom: 20,
-    zIndex: 1000,
-    elevation: 1000, // Add elevation for Android
+    zIndex: 20,
   },
   autocompleteContainer: {
-    zIndex: 1001,
-    elevation: 1001, // Add elevation for Android
-    position: 'relative',
+    zIndex: 1000,
   },
   autocompleteInputContainer: {
     borderWidth: 0,
     backgroundColor: 'transparent',
-    margin: 0,
-    padding: 0,
   },
   searchInputContainer: {
     flexDirection: "row",
@@ -759,43 +748,32 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
-    elevation: 8, // Increase elevation for Android
+    elevation: 4,
     marginTop: 4,
-    position: 'absolute',
-    top: 56, // Position below input
-    left: 0,
-    right: 0,
-    zIndex: 1002,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.08)",
-  },
-  autocompleteScrollContent: {
-    flexGrow: 1,
   },
   autocompleteItem: {
-    paddingVertical: 15, // Increase touch area
+    paddingVertical: 12,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.05)",
-    minHeight: 50, // Ensure minimum touch target
   },
   autocompleteItemContent: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   autocompleteTextContainer: {
+    marginLeft: 12,
     flex: 1,
-    marginLeft: 10,
   },
   autocompleteCityName: {
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 16,
+    fontWeight: "600",
     color: "#1A1A1A",
-    marginBottom: 2,
   },
   autocompleteProvince: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#666",
+    marginTop: 2,
   },
   selectedCityContainer: {
     paddingHorizontal: 20,
@@ -973,7 +951,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     height: "100%",
-    width: "100%",
   },
   skeletonImage: {
     width: 60,
