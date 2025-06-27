@@ -13,7 +13,7 @@ const QRCodeGenerator = () => {
   const generateQR = () => {
     // Format: Create a URL that includes the domain and projectId
     // Using the proper domain structure from your API
-    const signupUrl = `https://pakhims.com/online-apmt/signup/${projectId}`;
+    const signupUrl = `https://pakhims.com/stg_online-apmt/signup/${projectId}`;
     setQrValue(signupUrl);
   };
   

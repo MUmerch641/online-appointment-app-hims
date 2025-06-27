@@ -4,7 +4,7 @@ import { RootState } from "../store";
 import { logout, setUser } from "../slices/authSlice";
 import { authApi } from "./authApi";
 
-const API_BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/online-apmt`;
+const API_BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/stg_online-apmt`;
 
 interface ApiResponse {
   isSuccess: boolean;

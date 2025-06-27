@@ -10,7 +10,6 @@ import {
     TouchableOpacity,
     Image,
     ScrollView,
-    Alert,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import * as Animatable from "react-native-animatable"
@@ -18,6 +17,12 @@ import { Ionicons, Feather } from "@expo/vector-icons"
 import { StatusBar } from "expo-status-bar"
 import Constants from "expo-constants"
 import { router, useLocalSearchParams } from "expo-router"
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { Platform } from 'react-native'
+import AppointmentFlowService from '../services/appointmentFlowService'
+import { isUserAuthenticated } from '../utils/authUtils'
+import { useDispatch } from 'react-redux'
+import { updateHospitalData } from '../redux/slices/authSlice'
 
 // Interfaces
 interface Doctor {
@@ -62,8 +67,10 @@ const COLORS = {
 }
 
 const DOCTORS_API_ENDPOINT = "/stg_online-apmt/online-appointment/getAllDoctorsByHospitalId"
+const AUTH_TOKEN_KEY = "persist:auth"
 
 const DoctorsScreen: React.FC = () => {
+    const dispatch = useDispatch()
     const [doctors, setDoctors] = useState<Doctor[]>([])
     const [filteredDoctors, setFilteredDoctors] = useState<Doctor[]>([])
     const [searchQuery, setSearchQuery] = useState<string>("")
@@ -83,6 +90,16 @@ const DoctorsScreen: React.FC = () => {
             try {
                 const hospitalData = JSON.parse(hospitalDataParam) as Hospital
                 setSelectedHospital(hospitalData)
+                
+                // Store hospital data in Redux for profile screen access
+                dispatch(updateHospitalData({
+                    _id: hospitalData._id,
+                    hospitalName: hospitalData.hospitalName,
+                    hospitalLogoUrl: hospitalData.hospitalLogoUrl,
+                    address: hospitalData.address,
+                    city: hospitalData.city,
+                }))
+                
                 fetchDoctors(hospitalData._id)
             } catch (err) {
                 console.error("Error parsing hospital data:", err)
@@ -91,13 +108,21 @@ const DoctorsScreen: React.FC = () => {
             }
         } else if (hospitalId) {
             // Create minimal hospital object if only ID is provided
-            setSelectedHospital({
+            const hospitalInfo = {
                 _id: hospitalId,
                 hospitalName: hospitalName || "Hospital",
                 address: "",
                 city: "",
                 hospitalLogoUrl: null,
-            })
+            }
+            setSelectedHospital(hospitalInfo)
+            
+            // Store minimal hospital data in Redux
+            dispatch(updateHospitalData({
+                _id: hospitalId,
+                hospitalName: hospitalName || "Hospital",
+            }))
+            
             fetchDoctors(hospitalId)
         } else {
             setError("Hospital information is required")
@@ -194,31 +219,90 @@ const DoctorsScreen: React.FC = () => {
         return dayMap[lowerDay] || day
     }
 
+    // Check if user is authenticated
+    const checkUserAuthentication = async (): Promise<boolean> => {
+        try {
+            const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY)
+            if (persistedAuth) {
+                const authData = JSON.parse(persistedAuth)
+                return isUserAuthenticated(authData.isAuthenticated)
+            }
+            return false
+        } catch (error) {
+            console.error('Error checking user authentication:', error)
+            return false
+        }
+    }
+
     // Handle doctor selection
-    const handleDoctorChange = (doctorId: string) => {
-        const selectedDoctor = doctors.find((doc) => doc._id === doctorId)
-        if (selectedDoctor) {
-            Alert.alert(
-                "Doctor Selected",
-                `You have selected ${selectedDoctor.fullName}`,
-                [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                        text: "Continue",
-                        onPress: () => {
-                            // Navigate to appointment booking or next screen
-                            router.push({
-                                pathname: "/appointments/CreateAppointmentScreen",
-                                params: {
-                                    doctorId: selectedDoctor._id,
-                                    doctorData: JSON.stringify(selectedDoctor),
-                                    hospitalData: JSON.stringify(selectedHospital),
-                                },
-                            })
-                        },
+    const handleDoctorChange = async (doctorId: string) => {
+        try {
+            const selectedDoctor = doctors.find((doc) => doc._id === doctorId)
+
+            if (selectedDoctor) {
+                // Check user authentication
+                const isAuthenticated = await checkUserAuthentication()
+
+                if (!isAuthenticated) {
+                    // Store appointment flow data before redirecting to login
+                    await AppointmentFlowService.storeAppointmentFlow({
+                        hospitalId: selectedHospital?._id || params.hospitalId as string,
+                        hospitalName: selectedHospital?.hospitalName || params.hospitalName as string,
+                        hospitalData: selectedHospital ? JSON.stringify(selectedHospital) : undefined,
+                        doctorId: selectedDoctor._id,
+                        doctorData: JSON.stringify(selectedDoctor),
+                        cityName: params.cityName as string,
+                        mrn: params.mrn as string,
+                        redirectAfterLogin: true,
+                        timestamp: Date.now()
+                    })
+
+                    // Directly navigate to login screen without alert
+                    router.push({
+                        pathname: "/auth/LoginScreen",
+                        params: { 
+                            hospitalId: selectedHospital?._id || params.hospitalId,
+                            redirectToAppointment: 'true'
+                        }
+                    })
+                    return
+                }
+
+                // User is authenticated, proceed directly to appointment creation
+                const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+                let patientId = null;
+                let patientName = null;
+
+                if (persistedAuth) {
+                    const authData = JSON.parse(persistedAuth);
+
+                    if (authData.user) {
+                        // Parse user data if it's stored as a string
+                        const userData = typeof authData.user === 'string'
+                            ? JSON.parse(authData.user)
+                            : authData.user;
+                        patientId = userData._id || null;
+                        patientName = userData.fullName || null;
+                    }
+                }
+
+                // Navigate directly to appointment creation screen
+                router.push({
+                    pathname: "/dashboard/PatientScreen",
+                    params: {
+                        doctorId: selectedDoctor._id,
+                        doctorData: JSON.stringify(selectedDoctor),
+                        hospitalData: selectedHospital ? JSON.stringify(selectedHospital) : null,
+                        patientId,
+                        patientName,
+                        mrn: params.mrn || null,
                     },
-                ]
-            )
+                })
+            } else {
+                console.error("Doctor not found");
+            }
+        } catch (error) {
+            console.error('Error in handleDoctorChange:', error);
         }
     }
 
@@ -330,7 +414,7 @@ const DoctorsScreen: React.FC = () => {
                                                         ? (() => {
                                                             const shortDays = doctor.availableDays.map(getShortDayName)
                                                             return shortDays.join(", ")
-                                                          })()
+                                                        })()
                                                         : "Contact clinic for availability"}
                                                 </Text>
                                             </Text>

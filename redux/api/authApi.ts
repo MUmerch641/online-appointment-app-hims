@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 import { setUser } from "../slices/authSlice";
 import { RootState } from "../store";
 
-const API_BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/online-apmt`;
+const API_BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/stg_online-apmt`;
 
 // Define error response interface
 interface ErrorResponse {
@@ -56,7 +56,6 @@ interface RegisterUserRequest {
   fullName: string;
   mobileNo: string;
   password: string;
-  projectId: string;
 }
 
 interface UpdateProfileRequest {
@@ -73,35 +72,35 @@ interface ChangePasswordRequest {
 }
 
 // Create a baseQuery with auth token handling
-const baseQueryWithAuth = fetchBaseQuery({ 
+const baseQueryWithAuth = fetchBaseQuery({
   baseUrl: API_BASE_URL,
   prepareHeaders: (headers, { getState }) => {
     // Try to get the token from the state
     const token = (getState() as RootState).auth.token;
-    
+
     // If we have a token, add it to the Authorization header
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
     }
-    
+
     return headers;
   },
 });
 
 // Enhanced base query with better error logging
 const enhancedBaseQuery = async (args: any, api: any, extraOptions: any) => {
-  
+
   // For debugging purposes only - don't log actual passwords
-  const requestBody = args.body ? {...args.body} : undefined;
+  const requestBody = args.body ? { ...args.body } : undefined;
   if (requestBody && requestBody.password) {
     requestBody.password = '[REDACTED]';
   }
-  
 
-  
+
+
   const result = await baseQueryWithAuth(args, api, extraOptions);
-  
-  
+
+
   return result;
 };
 
@@ -111,44 +110,30 @@ export const authApi = createApi({
   endpoints: (builder) => ({
     loginUser: builder.mutation({
       query: (credentials) => ({
-        url: "/patient-auth/patient_login",
+        url: "patient-auth/general_login",
         method: "POST",
         body: credentials,
       }),
     }),
     registerUser: builder.mutation({
       query: (userData: RegisterUserRequest) => {
-        
-        // Additional validation for project ID
-        if (!userData.projectId || userData.projectId.length !== 24) {
-          console.error(`Invalid link: "${userData.projectId}", length: ${userData.projectId?.length}`);
+        if (!userData.mobileNo || !userData.fullName || !userData.password) {
           throw {
             status: 400,
-            data: { message: 'Invalid link. Expected 24-character hex string.' }
+            data: { message: 'All fields are required' }
           };
         }
-        
-        // Check if project ID is a valid hex string
-        const hexPattern = /^[0-9a-f]{24}$/i;
-        if (!hexPattern.test(userData.projectId)) {
-          console.error(`Project ID is not a valid hex string: "${userData.projectId}"`);
-          throw {
-            status: 400,
-            data: { message: 'Project ID must be a valid hexadecimal string.' }
-          };
-        }
-        
         return {
-          url: "/patient-auth/patient_signup",
+          url: "/patient-auth/general_signup",
           method: "POST",
           body: userData,
         };
       },
       // Transform successful response to ensure consistent structure
       transformResponse: (response: ApiResponse) => {
-        
-      
-        
+
+
+
         if (response && !response.hasOwnProperty('isSuccess')) {
 
           return {
@@ -160,20 +145,20 @@ export const authApi = createApi({
         return response;
       },
       transformErrorResponse: (
-        response: FetchBaseQueryError, 
-        meta: FetchBaseQueryMeta | undefined, 
+        response: FetchBaseQueryError,
+        meta: FetchBaseQueryMeta | undefined,
         arg: RegisterUserRequest
       ) => {
-        
+
         const errorData = response.data as any;
-        
+
         if (
           (response.status === 400 && errorData?.message?.includes('already exists')) ||
           (errorData?.message?.includes('already registered')) ||
           (errorData?.message?.includes('already registerd')) ||
           (errorData?.error?.includes('duplicate'))
         ) {
-          return { 
+          return {
             status: response.status || 400,
             data: { message: 'Phone number already registered' }
           };
@@ -209,7 +194,7 @@ export const authApi = createApi({
     // Fixed implementation for hospital profile
     getHospitalByProjectId: builder.query<HospitalResponse, string>({
       query: (projectId) => {
-        
+
         // Validate projectId before making the request
         if (!projectId || projectId.length !== 24) {
           throw {
@@ -217,7 +202,7 @@ export const authApi = createApi({
             data: { message: 'Invalid link' }
           };
         }
-        
+
         // Using the direct endpoint you provided
         return {
           url: `/patient-auth/hospital_profile/${projectId}`,
@@ -228,12 +213,12 @@ export const authApi = createApi({
       },
       // Transform the response to handle errors gracefully
       transformResponse: (response: any) => {
-        
+
         // If response is already in the expected format
         if (response && response.isSuccess === true && response.data) {
           return response;
         }
-        
+
         // If we received data but it's not in the expected format,
         // structure it properly
         if (response) {
@@ -249,7 +234,7 @@ export const authApi = createApi({
             message: "Hospital data retrieved"
           };
         }
-        
+
         // Shouldn't reach here, but just in case
         throw {
           status: 404,
@@ -258,14 +243,14 @@ export const authApi = createApi({
       },
       // Handle errors by providing fallback data
       transformErrorResponse: (
-        response: FetchBaseQueryError, 
-        meta: FetchBaseQueryMeta | undefined, 
+        response: FetchBaseQueryError,
+        meta: FetchBaseQueryMeta | undefined,
         arg: string
       ) => {
-        
+
         return {
           status: response.status || 500,
-          data: { 
+          data: {
             message: (response.data as any)?.message || 'Failed to fetch hospital information',
             fallback: true // Flag to indicate this is a fallback error
           }

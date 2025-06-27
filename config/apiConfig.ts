@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 
-export const API_BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/online-apmt`;
+export const API_BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/stg_online-apmt`;
 
 export const API = {
   LOGIN: `${API_BASE_URL}/patient-auth/patient_login`,

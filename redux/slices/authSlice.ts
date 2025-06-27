@@ -2,6 +2,14 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { persistReducer } from "redux-persist";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RootState } from "../store"; 
+interface Hospital {
+  _id?: string;
+  hospitalName?: string;
+  hospitalLogoUrl?: string | null;
+  address?: string;
+  city?: string;
+}
+
 interface User {
   _id: string;
   fullName: string;
@@ -9,9 +17,8 @@ interface User {
   token: string;
   profilePicture?: string;
   projectId?: string;
-  refreshToken:any;
-  
-
+  refreshToken: any;
+  hospital?: Hospital;
 }
 
 interface AuthState {
@@ -49,6 +56,11 @@ const authSlice = createSlice({
         AsyncStorage.setItem("profilePicture", action.payload);
       }
     },
+    updateHospitalData: (state, action: PayloadAction<Hospital>) => {
+      if (state.user) {
+        state.user.hospital = action.payload;
+      }
+    },
     logout: (state) => {
       state.user = null;
       state.token = null;
@@ -59,7 +71,7 @@ const authSlice = createSlice({
   },
 });
 
-export const { setUser, logout,updateProfilePicture } = authSlice.actions;
+export const { setUser, logout, updateProfilePicture, updateHospitalData } = authSlice.actions;
 
 export const selectUser = (state: RootState) => state.auth.user;
 export const selectIsAuthenticated = (state: RootState) => state.auth.isAuthenticated;

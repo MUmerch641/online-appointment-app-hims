@@ -2,7 +2,7 @@ import axios from 'axios';
 import Constants from 'expo-constants';
 
 // Base URL for API requests
-const BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/online-apmt`;
+const BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/stg_online-apmt`;
 
 /**
  * Resends authentication token to the provided mobile number

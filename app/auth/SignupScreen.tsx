@@ -16,7 +16,7 @@ import {
   LogBox,
 } from "react-native";
 import { Text, ActivityIndicator } from "react-native-paper";
-import { useRegisterUserMutation, useGetHospitalByProjectIdQuery, useLoginUserMutation } from "../../redux/api/authApi";
+import { useRegisterUserMutation, useLoginUserMutation } from "../../redux/api/authApi";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/authSlice";
 import { router, useLocalSearchParams } from "expo-router";
@@ -291,8 +291,6 @@ const VerificationScreen = ({
 
 // Main SignupScreen Component
 const SignupScreen = () => {
-  const params = useLocalSearchParams<{ projectId: string }>();
-  const projectId = params.projectId;
   const dispatch = useDispatch();
   const [formData, setFormData] = useState<FormData>({
     fullName: "",
@@ -308,12 +306,6 @@ const SignupScreen = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeInput, setActiveInput] = useState<string | null>(null);
   const [showVerification, setShowVerification] = useState<boolean>(false);
-
-  const {
-    data: hospitalData,
-    isLoading: isLoadingHospital,
-    error: hospitalError,
-  } = useGetHospitalByProjectIdQuery(projectId || "", { skip: !projectId });
 
   const formOpacity = useRef(new Animated.Value(0)).current;
   const formTranslateY = useRef(new Animated.Value(50)).current;
@@ -362,28 +354,8 @@ const SignupScreen = () => {
     [clearErrorsFor]
   );
 
-  // Project ID validation
+  // Initialize animations
   useEffect(() => {
-    const validateProjectId = () => {
-      if (!projectId) {
-        setErrorMessage("Invalid access: No project ID found.");
-        Alert.alert("Invalid Access", "Please scan a valid QR code.", [
-          { text: "Go Back", onPress: () => router.push("/auth/ScanQRScreen") },
-        ]);
-        return false;
-      }
-      if (projectId.length !== 24 || !/^[0-9a-f]{24}$/i.test(projectId)) {
-        setErrorMessage("Invalid link");
-        Alert.alert("Invalid link", "Please scan a valid QR code.", [
-          { text: "Scan QR Code", onPress: () => router.push("/auth/ScanQRScreen") },
-        ]);
-        return false;
-      }
-      return true;
-    };
-
-    if (!validateProjectId()) return;
-
     Animated.parallel([
       Animated.timing(formOpacity, { toValue: 1, duration: 800, useNativeDriver: true }),
       Animated.timing(formTranslateY, {
@@ -394,7 +366,7 @@ const SignupScreen = () => {
       }),
       Animated.spring(buttonScale, { toValue: 1, friction: 7, tension: 40, delay: 900, useNativeDriver: true }),
     ]).start();
-  }, [projectId]);
+  }, []);
 
   const handleInputFocus = useCallback((inputName: string) => setActiveInput(inputName), []);
   const handleInputBlur = useCallback(() => setActiveInput(null), []);
@@ -441,7 +413,7 @@ const SignupScreen = () => {
   };
 
   const handleSignup = useCallback(async () => {
-    setErrorMessage(null); // Hide errors on signup click
+    setErrorMessage(null);
     const validationError = validateInputs();
     if (validationError) {
       setErrorMessage(validationError);
@@ -449,42 +421,51 @@ const SignupScreen = () => {
     }
 
     try {
-      // Strict projectId check: block null, undefined, empty, or 'null' string
-      if (!projectId || projectId === 'null' || projectId === 'undefined' || typeof projectId !== 'string' || projectId.trim().length !== 24) {
-        setErrorMessage("Project ID is missing or invalid. Please scan a valid QR code.");
-        Alert.alert("Invalid link", "Please scan a valid QR code.", [
-          { text: "Scan QR Code", onPress: () => router.push("/auth/ScanQRScreen") },
-        ]);
-        return;
-      }
-      const response = await registerUser({
+      const registerData = {
         fullName: formData.fullName,
         mobileNo: formData.mobileNo,
         password: formData.password,
-        projectId: projectId,
-      }).unwrap();
+      };
 
-
+      console.log("Sending registration data:", registerData);
+      const response = await registerUser(registerData).unwrap();
+      console.log("Registration response:", response);
 
       if (response.isSuccess) {
         setShowVerification(true);
       } else if (response.message === "Mobile no is already registerd. Please login to your account") {
-        // When mobile number is already registered, login first then redirect
         await handleLoginAfterAction(formData.mobileNo, formData.password);
       } else {
         throw new Error(response.message || "Signup failed");
       }
     } catch (err: any) {
-      const errorMsg = err?.data?.message || "Signup failed. Please try again.";
+      console.error("Full signup error object:", JSON.stringify(err, null, 2));
+      
+      let errorMsg = "Signup failed. Please try again.";
+      
+      if (err?.data?.message && typeof err.data.message === 'string') {
+        errorMsg = err.data.message;
+      } else if (err?.error && typeof err.error === 'string') {
+        errorMsg = err.error;
+      } else if (err?.message && typeof err.message === 'string') {
+        errorMsg = err.message;
+      } else if (err?.data?.error && typeof err.data.error === 'string') {
+        errorMsg = err.data.error;
+      } else if (typeof err === 'string') {
+        errorMsg = err;
+      }
+      
+      console.log("Extracted error message:", errorMsg);
       setErrorMessage(errorMsg);
 
-      // Check for specific message strings related to already registered accounts
+      const lowerErrorMsg = typeof errorMsg === 'string' ? errorMsg.toLowerCase() : '';
+      
       if (errorMsg === "Mobile no is already registerd. Please login to your account" ||
-        errorMsg.toLowerCase().includes("already registerd")) {
+        lowerErrorMsg.includes("already registerd")) {
         await handleLoginAfterAction(formData.mobileNo, formData.password);
-      } else if (errorMsg.toLowerCase().includes("phone number already registered") ||
-        errorMsg.toLowerCase().includes("already registered") ||
-        errorMsg.toLowerCase().includes("already exists")) {
+      } else if (lowerErrorMsg.includes("phone number already registered") ||
+        lowerErrorMsg.includes("already registered") ||
+        lowerErrorMsg.includes("already exists")) {
         Alert.alert("Registration Error", "Phone number already registered. Please login instead.", [
           { text: "OK", onPress: () => router.push("/auth/LoginScreen") },
         ]);
@@ -492,23 +473,7 @@ const SignupScreen = () => {
         Alert.alert("Error", errorMsg);
       }
     }
-  }, [formData, projectId, registerUser, validateInputs, handleLoginAfterAction]);
-
-  if (!projectId) {
-    return (
-      <View style={styles.noProjectContainer}>
-        <Text style={styles.errorTitle}>Access Denied</Text>
-        <Text style={styles.errorMessage}>
-          You cannot access the signup page directly. Please scan a valid QR code to proceed with registration.
-        </Text>
-        <TouchableOpacity style={styles.scanButton} onPress={() => router.push("/auth/ScanQRScreen")}>
-          <Text style={styles.buttonText}>Scan QR Code</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  const hospitalInfo = hospitalData?.data;
+  }, [formData, registerUser, validateInputs, handleLoginAfterAction]);
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
@@ -517,7 +482,7 @@ const SignupScreen = () => {
           <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
             {showVerification ? (
               <VerificationScreen
-                hospitalInfo={hospitalInfo ?? null}
+                hospitalInfo={null}
                 errorMessage={errorMessage}
                 formData={formData}
                 setFormData={setFormData}
@@ -535,32 +500,9 @@ const SignupScreen = () => {
               <Animated.View
                 style={[styles.formContainer, { opacity: formOpacity, transform: [{ translateY: formTranslateY }] }]}
               >
-                {isLoadingHospital ? (
-                  <View style={styles.hospitalLoadingContainer}>
-                    <ActivityIndicator animating={true} color={COLORS.primary} size="large" />
-                    <Text style={styles.loadingText}>Loading hospital information...</Text>
-                  </View>
-                ) : hospitalInfo ? (
-                  <Animatable.View animation="fadeIn" duration={1000} style={styles.hospitalInfoContainer}>
-                    {hospitalInfo.hospitalLogoUrl ? (
-                      <Image
-                        source={{ uri: hospitalInfo.hospitalLogoUrl }}
-                        style={styles.hospitalLogo}
-                        resizeMode="contain"
-                      />
-                    ) : (
-                      <View style={styles.logoPlaceholder}>
-                        <Text style={styles.logoPlaceholderText}>{hospitalInfo.hospitalName?.charAt(0) || "H"}</Text>
-                      </View>
-                    )}
-                    <Text style={styles.hospitalName}>{hospitalInfo.hospitalName}</Text>
-                    {hospitalInfo.phoneNo && <Text style={styles.hospitalPhone}>Contact: {hospitalInfo.phoneNo}</Text>}
-                  </Animatable.View>
-                ) : (
-                  <Animatable.View animation="bounceIn" duration={1200} style={styles.logoContainer}>
-                    <Text style={styles.logoText}>HIMS</Text>
-                  </Animatable.View>
-                )}
+                <Animatable.View animation="bounceIn" duration={1200} style={styles.logoContainer}>
+                  <Text style={styles.logoText}>HIMS</Text>
+                </Animatable.View>
 
                 <Animatable.Text animation="fadeIn" duration={800} delay={300} style={styles.title}>
                   Signup Account
@@ -823,13 +765,25 @@ const styles = StyleSheet.create({
   bottomContainer: {
     width: "100%",
   },
-  noProjectContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-    backgroundColor: "#f8f9fa",
+  disabledLink: {
+    opacity: 0.5,
   },
+  disabledText: {
+    color: "#999",
+  },
+
+
+
+
+
+
+
+
+
+
+
+
+
   errorTitle: {
     fontSize: 24,
     fontWeight: "bold",
@@ -891,12 +845,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 15,
   },
-  disabledLink: {
-    opacity: 0.5,
-  },
-  disabledText: {
-    color: "#999",
-  },
+
 });
 
 export default SignupScreen;

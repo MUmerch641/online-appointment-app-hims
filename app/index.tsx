@@ -14,6 +14,7 @@ import {
   Image,
   ScrollView,
   FlatList,
+  TouchableWithoutFeedback,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import * as Animatable from "react-native-animatable"
@@ -21,9 +22,13 @@ import { Feather } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
 import Constants from 'expo-constants'
-import { router } from "expo-router"
+import { router, useFocusEffect } from "expo-router"
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import Autocomplete from 'react-native-autocomplete-input'
+import AppointmentFlowService from '../services/appointmentFlowService'
+import { useDispatch } from 'react-redux'
+import { logout, updateHospitalData } from '../redux/slices/authSlice'
+import { isUserAuthenticated } from '../utils/authUtils'
 
 // API response interfaces
 interface ApiResponse {
@@ -57,6 +62,14 @@ interface Hospital {
   hospitalLogoUrl: string | null
 }
 
+interface TokenPerHospitalResponse {
+  isSuccess: boolean
+  data: {
+    token: string
+  }
+  message: string
+}
+
 // App interfaces
 interface City {
   name: string
@@ -73,10 +86,12 @@ interface SelectCityScreenProps {
 // Constants
 const API_ENDPOINT = "/stg_user-api/cms/getProviceAndCityLists"
 const HOSPITAL_API_ENDPOINT = "/stg_online-apmt/patient-auth/getAllHospital"
+const TOKEN_PER_HOSPITAL_API_ENDPOINT = "/stg_online-apmt/patient-auth/getTokenPerHospital"
 const POPULAR_CITIES = ["Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad"]
 const WELCOME_MODAL_KEY = "welcome_modal_shown"
 const { width } = Dimensions.get("window")
 const ANIMATION_DURATION = 800
+const AUTH_TOKEN_KEY = "persist:auth"
 
 // Memoized Hospital card component
 const HospitalCard = React.memo<{
@@ -128,6 +143,7 @@ const HospitalSkeletonLoader = React.memo(() => (
 ))
 
 const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
+  const dispatch = useDispatch()
   const [allCities, setAllCities] = useState<City[]>([])
   const [filteredCities, setFilteredCities] = useState<City[]>([])
   const [selectedCity, setSelectedCity] = useState<City | null>(null)
@@ -137,6 +153,9 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
   const [hospitalsLoading, setHospitalsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(false)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+  const [user, setUser] = useState<any>(null)
+  const [showProfileDropdown, setShowProfileDropdown] = useState<boolean>(false)
 
   const searchInputRef = useRef<TextInput>(null)
   const scrollY = useRef(new Animated.Value(0)).current
@@ -173,6 +192,68 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
     }
     checkWelcomeModal()
   }, [])
+
+  // Check authentication status when component mounts
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY)
+        if (persistedAuth) {
+          const authData = JSON.parse(persistedAuth)
+          if (isUserAuthenticated(authData.isAuthenticated) && authData.user) {
+            setIsAuthenticated(true)
+            const userData = typeof authData.user === 'string' 
+              ? JSON.parse(authData.user) 
+              : authData.user
+            setUser(userData)
+          } else {
+            setIsAuthenticated(false)
+            setUser(null)
+          }
+        } else {
+          setIsAuthenticated(false)
+          setUser(null)
+        }
+      } catch (error) {
+        console.error('Error checking auth status:', error)
+        setIsAuthenticated(false)
+        setUser(null)
+      }
+    }
+    checkAuthStatus()
+  }, [])
+
+  // Refresh auth status when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      const checkAuthStatus = async () => {
+        try {
+          const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY)
+          if (persistedAuth) {
+            const authData = JSON.parse(persistedAuth)
+            if (isUserAuthenticated(authData.isAuthenticated) && authData.user) {
+              setIsAuthenticated(true)
+              const userData = typeof authData.user === 'string' 
+                ? JSON.parse(authData.user) 
+                : authData.user
+              setUser(userData)
+            } else {
+              setIsAuthenticated(false)
+              setUser(null)
+            }
+          } else {
+            setIsAuthenticated(false)
+            setUser(null)
+          }
+        } catch (error) {
+          console.error('Error checking auth status:', error)
+          setIsAuthenticated(false)
+          setUser(null)
+        }
+      }
+      checkAuthStatus()
+    }, [])
+  )
 
   // Welcome modal animation
   useEffect(() => {
@@ -311,6 +392,55 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
     // Fetch all hospitals by default
     fetchHospitals()
   }, [fetchCitiesData, fetchHospitals])
+
+  // Check for pending appointment flow after user authentication
+  useEffect(() => {
+    const checkPendingAppointmentFlow = async () => {
+      try {
+        // Check if user is authenticated
+        const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY)
+        if (persistedAuth) {
+          const authData = JSON.parse(persistedAuth)
+          
+          if (isUserAuthenticated(authData.isAuthenticated) && authData.user) {
+            // Check if there's a pending appointment flow
+            const appointmentFlow = await AppointmentFlowService.getAppointmentFlow()
+            
+            if (appointmentFlow && appointmentFlow.redirectAfterLogin) {
+              // Get patient info from stored auth data
+              const userData = typeof authData.user === 'string' 
+                ? JSON.parse(authData.user) 
+                : authData.user
+              const patientId = userData._id || null
+              const patientName = userData.fullName || null
+              
+              // Navigate directly to appointment creation screen
+              router.push({
+                pathname: "/appointments/CreateAppointmentScreen",
+                params: {
+                  doctorId: appointmentFlow.doctorId,
+                  doctorData: appointmentFlow.doctorData,
+                  hospitalData: appointmentFlow.hospitalData || null,
+                  patientId,
+                  patientName,
+                  mrn: appointmentFlow.mrn || null,
+                },
+              })
+              
+              // Clear the stored appointment flow data
+              await AppointmentFlowService.clearAppointmentFlow()
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking pending appointment flow:', error)
+      }
+    }
+
+    // Add a small delay to ensure the component is fully mounted
+    const timer = setTimeout(checkPendingAppointmentFlow, 1000)
+    return () => clearTimeout(timer)
+  }, [])
   // Handle city search and filtering
   const handleSearch = useCallback((text: string): void => {
     setSearchQuery(text)
@@ -343,22 +473,186 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
     }
   }, [fetchHospitals])
 
-  // Handle hospital selection
-  const handleSelectHospital = useCallback((hospital: Hospital): void => {
-    router.push({
-      pathname: "/Doctors",
-      params: {
-        hospitalId: hospital._id,
-        hospitalName: hospital.hospitalName,
-        cityName: selectedCity?.name || hospital.city,
+  // Add function to get token per hospital
+  const getTokenPerHospital = useCallback(async (hospitalId: string, authToken: string): Promise<string | null> => {
+    try {
+      // Strip double quotes from auth token if present
+      const cleanToken = authToken.startsWith('"') && authToken.endsWith('"') 
+        ? authToken.slice(1, -1) 
+        : authToken;
+
+      const response = await fetch(`${apiBaseUrl}${TOKEN_PER_HOSPITAL_API_ENDPOINT}/${hospitalId}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cleanToken}`,
+        },
+      })
+
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
       }
-    })
-  }, [selectedCity])
+
+      const data: TokenPerHospitalResponse = await response.json()
+
+      if (data.isSuccess && data.data) {
+        return data.data.token
+      } else {
+        console.error('Failed to get token per hospital:', data.message)
+        return null
+      }
+    } catch (error) {
+      console.error('Error getting token per hospital:', error)
+      return null
+    }
+  }, [apiBaseUrl])
+
+  // Check if user has persisted auth token
+  const checkAuthToken = useCallback(async (): Promise<string | null> => {
+    try {
+      const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY)
+      if (persistedAuth) {
+        const authData = JSON.parse(persistedAuth)
+        return authData.token || null
+      }
+      return null
+    } catch (error) {
+      console.error('Error checking auth token:', error)
+      return null
+    }
+  }, [])
+
+  // Handle hospital selection with token check
+  const handleSelectHospital = useCallback(async (hospital: Hospital): Promise<void> => {
+    try {
+      // Store hospital data in Redux for profile screen access
+      dispatch(updateHospitalData({
+        _id: hospital._id,
+        hospitalName: hospital.hospitalName,
+        hospitalLogoUrl: hospital.hospitalLogoUrl,
+        address: hospital.address,
+        city: hospital.city,
+      }))
+      
+      // Check if user has persisted auth token
+      const authToken = await checkAuthToken()
+      
+      if (authToken) {
+        // User has auth token, get token per hospital
+        const hospitalToken = await getTokenPerHospital(hospital._id, authToken)
+        
+        if (hospitalToken) {
+          // Update AsyncStorage with hospital token
+          try {
+            const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY)
+            if (persistedAuth) {
+              const authData = JSON.parse(persistedAuth)
+                authData.token = JSON.stringify(hospitalToken) // This adds quotes and escapes them properly
+                await AsyncStorage.setItem(AUTH_TOKEN_KEY, JSON.stringify(authData))
+            }
+          } catch (storageError) {
+            console.error('Error updating auth token in storage:', storageError)
+          }
+
+          // Navigate with hospital token (replacing auth token)
+          router.push({
+            pathname: "/Doctors",
+            params: {
+              hospitalId: hospital._id,
+              hospitalName: hospital.hospitalName,
+              cityName: selectedCity?.name || hospital.city,
+              authToken: hospitalToken, // Use hospital token instead of auth token
+              hospitalToken: hospitalToken,
+            }
+          })
+        } else {
+          // Failed to get hospital token, navigate with original auth token
+          router.push({
+            pathname: "/Doctors",
+            params: {
+              hospitalId: hospital._id,
+              hospitalName: hospital.hospitalName,
+              cityName: selectedCity?.name || hospital.city,
+              authToken: authToken,
+            }
+          })
+        }
+      } else {
+        // No auth token, navigate without API call
+        router.push({
+          pathname: "/Doctors",
+          params: {
+            hospitalId: hospital._id,
+            hospitalName: hospital.hospitalName,
+            cityName: selectedCity?.name || hospital.city,
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Error in hospital selection:', error)
+      // Fallback navigation
+      router.push({
+        pathname: "/Doctors",
+        params: {
+          hospitalId: hospital._id,
+          hospitalName: hospital.hospitalName,
+          cityName: selectedCity?.name || hospital.city,
+        }
+      })
+    }
+  }, [selectedCity, checkAuthToken, getTokenPerHospital, dispatch])
 
   // Memoized login handler
   const handleLogin = useCallback((): void => {
     router.push("/auth/LoginScreen")
   }, [])
+
+  // Handle logout
+  const handleLogout = useCallback(async (): Promise<void> => {
+    try {
+      // Preserve profile picture if it exists
+      if (user?.profilePicture) {
+        await AsyncStorage.setItem("persistentProfilePicture", user.profilePicture);
+      }
+      
+      // Use Redux logout action
+      dispatch(logout());
+      
+      // Remove specific auth-related items
+      await AsyncStorage.multiRemove([
+        "persist:auth", 
+        "token", 
+        "refreshToken", 
+        "profilePicture"
+      ]);
+      
+      // Update local state
+      setIsAuthenticated(false)
+      setUser(null)
+      setShowProfileDropdown(false)
+      
+      // Clear any pending appointment flow
+      await AppointmentFlowService.clearAppointmentFlow()
+       
+      // Navigate to login screen
+      router.push("/auth/LoginScreen");
+    } catch (error) {
+      console.error('Error during logout:', error)
+    }
+  }, [dispatch, user])
+
+  // Toggle profile dropdown
+  const toggleProfileDropdown = useCallback(() => {
+    setShowProfileDropdown(!showProfileDropdown)
+  }, [showProfileDropdown])
+
+  // Close profile dropdown
+  const closeProfileDropdown = useCallback(() => {
+    setShowProfileDropdown(false)
+  }, [])
+
   // Clear search
   const clearSearch = useCallback((): void => {
     setSearchQuery("")
@@ -510,7 +804,47 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar style="dark" />
 
-      <WelcomeModal />
+        <WelcomeModal />
+
+        {/* Profile Dropdown Modal - Only show when user is authenticated */}
+        {isUserAuthenticated(isAuthenticated) && (
+          <Modal
+            visible={showProfileDropdown}
+            transparent
+            animationType="fade"
+            onRequestClose={closeProfileDropdown}
+          >
+            <TouchableWithoutFeedback onPress={closeProfileDropdown}>
+              <View style={styles.profileModalOverlay}>
+                <TouchableWithoutFeedback>
+                  <View style={styles.profileModalContent}>
+                    <View style={styles.profileModalHeader}>
+                      <View style={styles.profileModalAvatar}>
+                        <Text style={styles.profileModalAvatarText}>
+                          {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
+                        </Text>
+                      </View>
+                      <Text style={styles.profileModalName} numberOfLines={1}>
+                        {user?.fullName || 'User'}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.profileModalActions}>
+                      <TouchableOpacity 
+                        style={styles.profileModalLogoutButton}
+                        onPress={handleLogout}
+                        activeOpacity={0.7}
+                      >
+                        <Feather name="log-out" size={16} color="#FF6B6B" />
+                        <Text style={styles.profileModalLogoutText}>Logout</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
 
       <Animated.View
         style={[
@@ -538,17 +872,40 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
                 Search for your city to find hospitals near you
               </Animatable.Text>
             </View>
-            <Animatable.View
-              animation="pulse"
-              iterationCount="infinite"
-              duration={2000}
-              useNativeDriver
-            >
-              <TouchableOpacity style={styles.loginButton} onPress={handleLogin} activeOpacity={0.7}>
-                <Feather name="user" size={16} color="#FFFFFF" />
-                <Text style={styles.loginButtonText}>Login</Text>
-              </TouchableOpacity>
-            </Animatable.View>
+            {isUserAuthenticated(isAuthenticated) ? (
+              // Profile dropdown when user is logged in
+              <View style={styles.profileContainer}>
+                <TouchableOpacity 
+                  style={styles.profileButton} 
+                  onPress={toggleProfileDropdown}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.profileAvatar}>
+                    <Text style={styles.profileAvatarText}>
+                      {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
+                    </Text>
+                  </View>
+                  <Feather 
+                    name={showProfileDropdown ? "chevron-up" : "chevron-down"} 
+                    size={16} 
+                    color="#4A80F0" 
+                  />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              // Login button when user is not logged in
+              <Animatable.View
+                animation="pulse"
+                iterationCount="infinite"
+                duration={2000}
+                useNativeDriver
+              >
+                <TouchableOpacity style={styles.loginButton} onPress={handleLogin} activeOpacity={0.7}>
+                  <Feather name="user" size={16} color="#FFFFFF" />
+                  <Text style={styles.loginButtonText}>Login</Text>
+                </TouchableOpacity>
+              </Animatable.View>
+            )}
           </View>
         </View>
       </Animated.View>
@@ -693,6 +1050,97 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#FFFFFF",
     marginLeft: 6,
+  },
+  profileContainer: {
+    position: 'relative',
+  },
+  profileButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0F4FF",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E1E7FF",
+  },
+  profileAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#4A80F0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  profileAvatarText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  profileModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 100,
+    paddingRight: 20,
+  },
+  profileModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    minWidth: 200,
+  },
+  profileModalHeader: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+    alignItems: "center",
+  },
+  profileModalAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#4A80F0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  profileModalAvatarText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  profileModalName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1A1A1A",
+    textAlign: "center",
+  },
+  profileModalActions: {
+    padding: 12,
+  },
+  profileModalLogoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#FFF5F5",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FFE5E5",
+  },
+  profileModalLogoutText: {
+    fontSize: 14,
+    color: "#FF6B6B",
+    marginLeft: 8,
+    fontWeight: "600",
   },
   title: {
     fontSize: 24,

@@ -22,11 +22,15 @@ import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/Colors";
+import AppointmentFlowService from "../../services/appointmentFlowService";
 
 // TypeScript interfaces
 interface Hospital {
+  _id?: string;
   hospitalName?: string;
-  hospitalLogoUrl?: string;
+  hospitalLogoUrl?: string | null;
+  address?: string;
+  city?: string;
 }
 
 interface User {
@@ -179,7 +183,7 @@ const ProfileScreen: React.FC = () => {
 
     try {
       const response = await fetch(
-        `${Constants.expoConfig?.extra?.API_BASE_URL}/online-apmt/patient-auth/change_password`,
+        `${Constants.expoConfig?.extra?.API_BASE_URL}/stg_online-apmt/patient-auth/change_password`,
         {
           method: "POST",
           headers: {
@@ -210,12 +214,27 @@ const ProfileScreen: React.FC = () => {
 
   const handleLogout = async () => {
     try {
+      // Preserve profile picture if it exists
       if (profilePicture) {
         await AsyncStorage.setItem("persistentProfilePicture", profilePicture);
       }
       
+      // Use Redux logout action
       dispatch(logout());
-      await AsyncStorage.multiRemove(["token", "refreshToken", "profilePicture"]);
+      
+      // Remove specific auth-related items
+      await AsyncStorage.multiRemove([
+        "persist:auth", 
+        "token", 
+        "refreshToken", 
+        "profilePicture"
+      ]);
+      
+      // Clear any pending appointment flow
+      await AppointmentFlowService.clearAppointmentFlow();
+      await AppointmentFlowService.clearPendingAppointment();
+      
+      // Navigate to login screen
       router.replace("/auth/LoginScreen");
     } catch (error) {
       Alert.alert("Error", "Failed to logout");

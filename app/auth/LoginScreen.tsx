@@ -16,21 +16,26 @@ import {
 import { Text, ActivityIndicator } from "react-native-paper";
 import { useLoginUserMutation } from "../../redux/api/authApi";
 import { useDispatch, useSelector } from "react-redux";
-import { selectUser, setUser } from "../../redux/slices/authSlice";
-import { useRouter } from "expo-router";
+import { selectUser, setUser, updateHospitalData } from "../../redux/slices/authSlice";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Animatable from "react-native-animatable";
 import { COLORS } from "@/constants/Colors";
 import { Ionicons } from "@expo/vector-icons";
 import { forgetPassword, resetPassword } from "@/Authapi/signupApi";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import AppointmentFlowService from "../../services/appointmentFlowService";
 
 const LoginScreen = () => {
   const dispatch = useDispatch();
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  const projectId = params?.projectId?.toString();
+
   const [mobileNo, setMobileNo] = useState<string>("03");
   const [password, setPassword] = useState<string>("");
   const [passwordVisible, setPasswordVisible] = useState<boolean>(false);
   const [loginUser, { isLoading, error }] = useLoginUserMutation();
-  const router = useRouter();
   const user = useSelector(selectUser);
   const [rememberMe, setRememberMe] = useState<boolean>(false);
   // Forgot password modal state
@@ -294,10 +299,61 @@ const LoginScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (user?.token) {
-      router.replace("/dashboard/PatientScreen");
-    }
-  }, [user]);
+    const handleLoginSuccess = async () => {
+      if (user?.token) {
+        // Check if there's a pending appointment flow
+        const appointmentFlow = await AppointmentFlowService.getAppointmentFlow();
+        
+        if (appointmentFlow && appointmentFlow.redirectAfterLogin) {
+          // Store hospital data in Redux if available
+          if (appointmentFlow.hospitalData) {
+            try {
+              const hospitalData = JSON.parse(appointmentFlow.hospitalData);
+              dispatch(updateHospitalData({
+                _id: hospitalData._id || appointmentFlow.hospitalId,
+                hospitalName: hospitalData.hospitalName || appointmentFlow.hospitalName,
+                hospitalLogoUrl: hospitalData.hospitalLogoUrl,
+                address: hospitalData.address,
+                city: hospitalData.city,
+              }));
+            } catch (error) {
+              console.error('Error parsing hospital data:', error);
+              // Fallback with basic hospital info
+              dispatch(updateHospitalData({
+                _id: appointmentFlow.hospitalId,
+                hospitalName: appointmentFlow.hospitalName,
+              }));
+            }
+          }
+          
+          // Get patient info from user data
+          const patientId = user._id || null;
+          const patientName = user.fullName || null;
+          
+          // Navigate directly to appointment creation screen
+          router.replace({
+            pathname: "/dashboard/PatientScreen",
+            params: {
+              doctorId: appointmentFlow.doctorId,
+              doctorData: appointmentFlow.doctorData,
+              hospitalData: appointmentFlow.hospitalData || null,
+              patientId,
+              patientName,
+              mrn: appointmentFlow.mrn || null,
+            },
+          });
+          
+          // Clear the stored appointment flow data
+          await AppointmentFlowService.clearAppointmentFlow();
+        } else {
+          // Normal redirect to home
+          router.replace("/");
+        }
+      }
+    };
+    
+    handleLoginSuccess();
+  }, [user, dispatch]);
 
   const handleLogin = async () => {
     Animated.sequence([
@@ -318,12 +374,23 @@ const LoginScreen = () => {
       return;
     }
 
-    const loginData = { mobileNo, password };
 
     try {
+      // Import AsyncStorage at the top of the file
+      // Get projectId from URL params
+      console.log('project id', projectId);
+      // Alternatively, we could get it from AsyncStorage
+      // const projectId = await AsyncStorage.getItem('projectId');
+      // Create the login data, including projectId if available
+      const loginData = { 
+        mobileNo, 
+        password,
+        ...(projectId ? { projectId } : {})  // Only add if projectId exists
+      };
       const response = await loginUser(loginData).unwrap();
 
       if (response?.isSuccess && response?.data?.token) {
+        
         dispatch(setUser(response.data));
       } else {
         Alert.alert("Login Failed", response?.message || "Invalid credentials. Please try again.");
@@ -513,10 +580,10 @@ const LoginScreen = () => {
                 >
                   <Text style={styles.signupPrompt}>Don't have an account?</Text>
                   <TouchableOpacity
-                    onPress={() => router.push("/auth/ScanQRScreen")}
+                    onPress={() => router.push("/auth/SignupScreen")}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.signupText}> Scan for Sign Up</Text>
+                    <Text style={styles.signupText}> Click for Sign Up</Text>
                   </TouchableOpacity>
                 </Animatable.View>
 

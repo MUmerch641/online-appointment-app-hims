@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import { COLORS } from "@/constants/Colors";
 import Constants from "expo-constants";
 
-const API_BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/online-apmt`;
+const API_BASE_URL = `${Constants.expoConfig?.extra?.API_BASE_URL}/stg_online-apmt`;
 
 const QRScannerScreen = () => {
   const [scanned, setScanned] = useState<boolean>(false);
@@ -65,7 +65,7 @@ const QRScannerScreen = () => {
 
     try {
       let projectId: string | null = null;
-      const mainPattern = /\/online-apmt\/([a-f0-9]{24})\/?/i;
+      const mainPattern = /\/stg_online-apmt\/([a-f0-9]{24})\/?/i;
       const mainMatch = data.match(mainPattern);
       const fallbackPattern = /\/([a-f0-9]{24})(?:\/|$)/i;
       const fallbackMatch = !mainMatch ? data.match(fallbackPattern) : null;
