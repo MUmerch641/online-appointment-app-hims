@@ -12,7 +12,7 @@ import {
   Image,
   Modal,
 } from "react-native";
-import { FontAwesome5, Ionicons } from "@expo/vector-icons";
+import {  Ionicons } from "@expo/vector-icons";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Card } from "react-native-paper";
@@ -23,7 +23,7 @@ import {
   useBookAppointmentMutation,
 } from "../../redux/api/appointmentApi";
 import { COLORS } from "@/constants/Colors";
-import BottomNavigation from "@/services/bottomNavigation";
+import AppBottomNavigation from "@/components/AppBottomNavigation";
 
 // Define interfaces for the data structures
 interface Service {
@@ -139,7 +139,6 @@ const CreateAppointmentScreen: React.FC = () => {
   const [animate, setAnimate] = useState<boolean>(false);
   const [showDoctorSelection, setShowDoctorSelection] = useState<boolean>(true);
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
-  const [navigationIndex, setNavigationIndex] = useState<number>(0);
   const [showServiceDropdown, setShowServiceDropdown] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(0);
   const slotsPerPage = 6;
@@ -305,27 +304,27 @@ const CreateAppointmentScreen: React.FC = () => {
   const handleDoctorChange = (doctorId: string | null): void => {
     setSelectedDoctor(doctorId);
     setSelectedSlot(null);
-  
+
     // Set today's date by default
     const todayString = TODAY_DATE_STRING;
     setSelectedDate(todayString);
-  
+
     if (!doctorId) {
       setAvailableDates([]);
       setShowDoctorSelection(true);
       return;
     }
-  
+
     const doctorDetails = doctorsData?.data?.find((doc: Doctor) => doc._id === doctorId);
     if (!doctorDetails) {
       setAvailableDates([]);
       return;
     }
-  
+
     const availableDays = calculateAvailableDates(doctorDetails);
     setAvailableDates(availableDays);
     setShowDoctorSelection(false);
-  
+
     // Remove the direct fetchSlots call - the existing useEffect will handle this
     // when both selectedDoctor and selectedDate are set3
   };
@@ -927,58 +926,7 @@ const CreateAppointmentScreen: React.FC = () => {
         </Card>
       </ScrollView>
 
-      <View style={styles.bottomNav}>
-        <BottomNavigation
-          navigationState={{
-            index: navigationIndex,
-            routes: [
-              { key: "appointment", title: "Appointment", icon: "calendar-alt" },
-              { key: "patient", title: "Patient", icon: "hospital-user" },
-              { key: "profile", title: "Profile", icon: "user" },
-            ],
-          }}
-          onIndexChange={(index: number) => {
-            setNavigationIndex(index);
-            switch (index) {
-              case 0:
-                router.replace("/dashboard/DashboardScreen");
-                break;
-              case 1:
-                router.replace("/dashboard/PatientScreen");
-                break;
-              case 2:
-                router.replace("/dashboard/ProfileScreen");
-                break;
-            }
-          }}
-          renderIcon={({ route, focused }: NavigationProps) => (
-            <FontAwesome5 name={route.icon} size={25} color={focused ? "#1F75FE" : "#666"} />
-          )}
-          renderLabel={({ route, focused }: NavigationProps) => (
-            <Text
-              style={{
-                color: focused ? "#1F75FE" : "#666",
-                fontSize: 10,
-                marginTop: -5,
-                textAlign: "center",
-              }}
-            >
-              {route.title}
-            </Text>
-          )}
-          renderScene={() => null}
-          barStyle={{ backgroundColor: "white" }}
-          activeColor="transparent"
-          inactiveColor="transparent"
-          style={{ backgroundColor: "transparent", height: 60 }}
-          theme={{
-            colors: {
-              secondaryContainer: "transparent",
-            },
-          }}
-          labeled={true}
-        />
-      </View>
+     <AppBottomNavigation/>
       <Modal visible={showConfirmModal} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -1005,15 +953,7 @@ const CreateAppointmentScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  bottomNav: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "white",
-    borderTopWidth: 1,
-    borderTopColor: "#eee",
-  },
+
   container: {
     flexGrow: 1,
     paddingHorizontal: 16,

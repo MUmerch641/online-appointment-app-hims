@@ -23,7 +23,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import * as Animatable from "react-native-animatable";
 import { COLORS } from "@/constants/Colors";
 import { Ionicons } from "@expo/vector-icons";
-import { verifyToken, resendToken } from "../../Authapi/signupApi";
+import { verifyToken, resendToken } from "../../src/Authapi/signupApi";
 
 // Interfaces
 interface User {

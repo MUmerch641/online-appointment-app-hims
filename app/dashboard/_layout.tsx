@@ -31,23 +31,34 @@ export default function Layout() {
         name="DashboardScreen"
         options={{
           title: "Appointment",
-          tabBarIcon: ({ color, size }) => <FontAwesome5 name="calendar-alt" size={size} color={color} />,
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => <FontAwesome5 name="calendar-alt" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="PatientScreen"
         options={{
           title: "Patient",
-          tabBarIcon: ({ color, size }) => <FontAwesome5 name="hospital-user" size={size} color={color} />,
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => <FontAwesome5 name="hospital-user" size={size} color={color} />,
         }}
       />
+
+      <Tabs.Screen
+        name="HimsPatientScreen"
+        options={{
+          title: "HIMS Patient",
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => <FontAwesome5 name="user-md" size={size} color={color} />,
+        }}
+      />
+
       <Tabs.Screen
         name="ProfileScreen" 
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => <FontAwesome5 name="user" size={size} color={color} />,
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => <FontAwesome5 name="user" size={size} color={color} />,
         }}
       />
+
+
     </Tabs>
   );
 }

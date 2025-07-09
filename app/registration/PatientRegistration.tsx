@@ -13,7 +13,7 @@ import {
   Modal,
 } from "react-native";
 import { skipToken } from "@reduxjs/toolkit/query";
-import { BottomNavigation, RadioButton, ActivityIndicator } from "react-native-paper";
+import {  RadioButton, ActivityIndicator } from "react-native-paper";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useDispatch, useSelector } from "react-redux";
@@ -27,8 +27,8 @@ import {
 import { selectUser } from "../../redux/slices/authSlice";
 import { addPatients, setPatients } from "../../redux/slices/patientSlice";
 import { COLORS } from "@/constants/Colors";
-import { FontAwesome5 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import AppBottomNavigation from "@/components/AppBottomNavigation";
 
 // Define types for the patient data based on the API response
 interface Patient {
@@ -67,7 +67,6 @@ interface ApiResponse {
 }
 
 const PatientRegistration: React.FC = () => {
-  const [navigationIndex, setNavigationIndex] = useState<number>(0);
   const [dob, setDob] = useState<string>("");
   const [age, setAge] = useState<Age>({ years: 0, months: 0, days: 0 });
   const [gender, setGender] = useState<"Male" | "Female">("Male");
@@ -216,13 +215,18 @@ const PatientRegistration: React.FC = () => {
   useEffect(() => {
  
 
-    if (searchedPatient?.isSuccess && (searchedPatient as ApiResponse).data?.length > 0) {
+    const apiData = (searchedPatient as ApiResponse)?.data;
+    if (
+      searchedPatient?.isSuccess &&
+      Array.isArray(apiData) &&
+      apiData.length > 0
+    ) {
       Animated.sequence([
         Animated.timing(fadeAnim, { toValue: 0.7, duration: 200, useNativeDriver: true }),
         Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
 
-      setSearchedPatientData((searchedPatient as ApiResponse).data[0] as Patient);
+      setSearchedPatientData(apiData[0] as Patient);
     } else if (searchedMRN && !isFetching) {
       Alert.alert("No Patient Found", "No patient found with this MRN.");
     }
@@ -509,7 +513,7 @@ const PatientRegistration: React.FC = () => {
             Gender<Text style={styles.requiredStar}>*</Text>
           </Text>
           <View style={styles.radioGroup}>
-            <RadioButton.Group onValueChange={(value: "Male" | "Female") => setGender(value)} value={gender}>
+            <RadioButton.Group onValueChange={(value: string) => setGender(value as "Male" | "Female")} value={gender}>
               <View style={styles.radioButtonRow}>
                 <View style={styles.radioButton}>
                   <RadioButton value="Male" color={COLORS.primary} />
@@ -653,58 +657,8 @@ const PatientRegistration: React.FC = () => {
         </View>
       </Modal>
 
-      <View style={styles.bottomNav}>
-        <BottomNavigation
-          navigationState={{
-            index: navigationIndex,
-            routes: [
-              { key: "appointment", title: "Appointment", icon: "calendar-alt" },
-              { key: "patient", title: "Patient", icon: "hospital-user" },
-              { key: "profile", title: "Profile", icon: "user" },
-            ],
-          }}
-          onIndexChange={(index: number) => {
-            setNavigationIndex(index);
-            switch (index) {
-              case 0:
-                router.replace("/dashboard/DashboardScreen");
-                break;
-              case 1:
-                router.replace("/dashboard/PatientScreen");
-                break;
-              case 2:
-                router.replace("/dashboard/ProfileScreen");
-                break;
-            }
-          }}
-          renderIcon={({ route, focused }: { route: { icon: string }; focused: boolean }) => (
-            <FontAwesome5 name={route.icon} size={25} color={focused ? COLORS.primary : "#666"} />
-          )}
-          renderLabel={({ route, focused }: { route: { title: string }; focused: boolean }) => (
-            <Text
-              style={{
-                color: focused ? COLORS.primary : "#666",
-                fontSize: 10,
-                marginTop: -5,
-                textAlign: "center",
-              }}
-            >
-              {route.title}
-            </Text>
-          )}
-          renderScene={() => null}
-          barStyle={{ backgroundColor: "white" }}
-          activeColor="transparent"
-          inactiveColor="transparent"
-          style={{ backgroundColor: "transparent", height: 60 }}
-          theme={{
-            colors: {
-              secondaryContainer: "transparent",
-            },
-          }}
-          labeled={true}
-        />
-      </View>
+      <AppBottomNavigation/>
+
     </Animated.View>
   );
 };
@@ -822,8 +776,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   readOnlyInput: {
-    backgroundColor: COLORS.lightGray + "40",
-  },
+    backgroundColor: COLORS.lightGray + "80",
+    color: "#00000063",
+    },
   datePickerButton: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -867,14 +822,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
   },
-  bottomNav: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    elevation: 8,
-    backgroundColor: "white",
-  },
+  
   requiredStar: {
     color: "#FF3B30",
     marginLeft: 2,

@@ -22,7 +22,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Animatable from "react-native-animatable";
 import { COLORS } from "@/constants/Colors";
 import { Ionicons } from "@expo/vector-icons";
-import { forgetPassword, resetPassword } from "@/Authapi/signupApi";
+import { forgetPassword, resetPassword } from "@/src/Authapi/signupApi";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AppointmentFlowService from "../../services/appointmentFlowService";
 
@@ -347,7 +347,7 @@ const LoginScreen = () => {
           await AppointmentFlowService.clearAppointmentFlow();
         } else {
           // Normal redirect to home
-          router.replace("/");
+          router.replace("/dashboard/PatientScreen");
         }
       }
     };
@@ -378,7 +378,6 @@ const LoginScreen = () => {
     try {
       // Import AsyncStorage at the top of the file
       // Get projectId from URL params
-      console.log('project id', projectId);
       // Alternatively, we could get it from AsyncStorage
       // const projectId = await AsyncStorage.getItem('projectId');
       // Create the login data, including projectId if available

@@ -144,8 +144,8 @@ const AppointmentTokenScreen = () => {
         return;
       }
 
-      if (viewShotRef.current) {
-        const uri = await viewShotRef?.current?.capture();
+      if (viewShotRef.current && typeof viewShotRef.current.capture === "function") {
+        const uri = await viewShotRef.current.capture();
         
         const asset = await MediaLibrary.createAssetAsync(uri);
         await MediaLibrary.createAlbumAsync("Appointments", asset, false);
@@ -179,8 +179,8 @@ const AppointmentTokenScreen = () => {
     ]).start();
     
     try {
-      if (viewShotRef.current) {
-        const uri = await viewShotRef?.current?.capture();
+      if (viewShotRef.current && typeof viewShotRef.current.capture === "function") {
+        const uri = await viewShotRef.current.capture();
         await Sharing.shareAsync(uri, {
           mimeType: 'image/png',
           dialogTitle: 'Share Appointment Token',
