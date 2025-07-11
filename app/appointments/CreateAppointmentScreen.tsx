@@ -145,8 +145,8 @@ const CreateAppointmentScreen: React.FC = () => {
   const hospitalData = params.hospitalData ? JSON.parse(Array.isArray(params.hospitalData) ? params.hospitalData[0] : params.hospitalData) as Hospital : null;
 
   // Access doctor and hospital from Redux
-  const selectedDoctorRedux = useSelector((state: RootState) => state.auth.user?.doctor);
-  const selectedHospital = useSelector((state: RootState) => state.auth.user?.hospital);
+  const selectedDoctorRedux = useSelector((state: RootState) => state?.auth?.user?.doctor);
+  const selectedHospital = useSelector((state: RootState) => state?.auth?.user?.hospital);
 
   // Use Redux doctor if available, otherwise fall back to params
   const effectiveDoctor = selectedDoctorRedux || doctorData;
@@ -158,7 +158,7 @@ const CreateAppointmentScreen: React.FC = () => {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   const fadeAnim = useState(new Animated.Value(0))[0];
-  const slideAnim = useState(new Animated.Value(100))[0];
+  const slideAnim = useState(new Animated.Value(0))[0];
   const spinAnim = useState(new Animated.Value(0))[0];
   const [projectId, setProjectId] = useState<string>("");
 
@@ -186,6 +186,7 @@ const CreateAppointmentScreen: React.FC = () => {
   const [showServiceDropdown, setShowServiceDropdown] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(0);
   const slotsPerPage = 6;
+  const [isReady, setIsReady] = useState<boolean>(false);
 
   const { data: timeSlotsData, refetch: fetchSlots } = useGetAllTimeSlotsQuery(
     selectedDoctor && selectedDate ? { doctorId: selectedDoctor, date: selectedDate } : undefined,
@@ -198,47 +199,53 @@ const CreateAppointmentScreen: React.FC = () => {
 
   useEffect(() => {
     const checkAuthAndInitialize = async () => {
-      const persistedAuth = await AsyncStorage.getItem('persist:auth');
-      if (!persistedAuth || !isUserAuthenticated(JSON.parse(persistedAuth).isAuthenticated)) {
-        Alert.alert('Authentication Required', 'Please log in to continue.');
-        router.push({
-          pathname: '/auth/LoginScreen',
-          params: {
-            redirectToAppointment: 'true',
-            patientId,
-            patientName,
-            mrn,
-            doctorId: effectiveDoctorId,
-            doctorData: effectiveDoctor ? JSON.stringify(effectiveDoctor) : undefined,
-            hospitalData: selectedHospital ? JSON.stringify(selectedHospital) : undefined,
-          },
-        });
-        return;
-      }
-
-      // If no doctor is selected, show doctor selection or redirect to DoctorsScreen
-      if (!effectiveDoctorId) {
-        if (!selectedHospital) {
-          Alert.alert('Error', 'No hospital selected. Please select a hospital first.');
-          router.push('/');
+      try {
+        const persistedAuth = await AsyncStorage.getItem('persist:auth');
+        if (!persistedAuth || !isUserAuthenticated(JSON.parse(persistedAuth).isAuthenticated)) {
+          Alert.alert('Authentication Required', 'Please log in to continue.');
+          router.push({
+            pathname: '/auth/LoginScreen',
+            params: {
+              redirectToAppointment: 'true',
+              patientId,
+              patientName,
+              mrn,
+              doctorId: effectiveDoctorId,
+              doctorData: effectiveDoctor ? JSON.stringify(effectiveDoctor) : undefined,
+              hospitalData: selectedHospital ? JSON.stringify(selectedHospital) : undefined,
+            },
+          });
           return;
         }
-        setShowDoctorSelection(true);
-        // Optionally redirect to DoctorsScreen
-        router.push({
-          pathname: '/Doctors',
-          params: {
-            hospitalId: selectedHospital._id,
-            hospitalName: selectedHospital.hospitalName,
-            hospitalData: JSON.stringify(selectedHospital),
-            cityName: selectedHospital.city,
-          },
-        });
-        return;
-      }
 
-      // Set today's date by default if a doctor is selected
-      setSelectedDate(TODAY_DATE_STRING);
+        // If no doctor is selected, show doctor selection or redirect
+        if (!effectiveDoctorId) {
+          if (!selectedHospital) {
+            Alert.alert('Info', 'No hospital selected. Please select a hospital first.');
+            router.push('/');
+            return;
+          }
+          setShowDoctorSelection(true);
+          // Optionally redirect to DoctorsScreen (commented out as per your code)
+          // router.push({
+          //   pathname: '/Doctors',
+          //   params: {
+          //     hospitalId: selectedHospital._id,
+          //     hospitalName: selectedHospital.hospitalName,
+          //     hospitalData: JSON.stringify(selectedHospital),
+          //     cityName: selectedHospital.city,
+          //   },
+          // });
+          return;
+        }
+
+        // Set today's date and mark as ready
+        setSelectedDate(TODAY_DATE_STRING);
+        setIsReady(true); // Mark component as ready to render
+      } catch (error) {
+        console.error('Error in auth check:', error);
+        setIsReady(true); // Still allow rendering to avoid infinite loading
+      }
     };
 
     checkAuthAndInitialize();
@@ -266,6 +273,7 @@ const CreateAppointmentScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    slideAnim.setValue(-20); // Start slightly above
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -277,7 +285,8 @@ const CreateAppointmentScreen: React.FC = () => {
         duration: 800,
         useNativeDriver: true,
       }),
-    ]).start();
+    ]).start(() => {
+    });
   }, [fadeAnim, slideAnim]);
 
   useEffect(() => {
@@ -585,7 +594,7 @@ const CreateAppointmentScreen: React.FC = () => {
         Alert.alert("Error", response.message || "Failed to book appointment");
       }
     } catch (error) {
-      console.log('error',error)
+      console.log('error', error)
       Alert.alert("Error", "An error occurred while booking the appointment");
     } finally {
       setIsLoading(false);
@@ -627,12 +636,16 @@ const CreateAppointmentScreen: React.FC = () => {
   return (
     <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <Animated.View style={[styles.header, { transform: [{ translateY: slideAnim }] }]}>
-          <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Create Appointment</Text>
-        </Animated.View>
+        {
+          isReady && (
+            <Animated.View style={[styles.header, { transform: [{ translateY: slideAnim }] }]}>
+              <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
+                <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Create Appointment</Text>
+            </Animated.View>
+          )
+        }
 
         <Card style={styles.card}>
           <View style={styles.topSection}>
@@ -646,9 +659,10 @@ const CreateAppointmentScreen: React.FC = () => {
               <View style={styles.infoWrapper}>
                 <View style={styles.infoItem}>
                   <Ionicons name="person" size={16} color={COLORS.primary} style={styles.infoIcon} />
-                  <View>
+                  <View >
                     <Text style={styles.infoLabel}>Patient</Text>
-                    <Text style={styles.infoValue}>{patientName || "N/A"} (MRN: {mrn || "N/A"})</Text>
+                    <Text style={[styles.infoValue] }>{patientName || "N/A"} </Text>
+                    <Text style={styles.infoValue}>{mrn ? `(MRN: ${mrn})` : "MRN: N/A"}</Text>
                   </View>
                 </View>
                 <View style={styles.infoItem}>
@@ -735,7 +749,7 @@ const CreateAppointmentScreen: React.FC = () => {
           )}
 
           {!showDoctorSelection && (
-            <>
+            <View>
               <View style={styles.formSection}>
                 <View style={styles.doctorHeaderRow}>
                   <View style={styles.doctorNameContainer}>
@@ -886,7 +900,7 @@ const CreateAppointmentScreen: React.FC = () => {
                 <View style={styles.timeSlotContainer}>
                   {selectedDoctor && selectedDate ? (
                     timeSlotsData?.data?.length ? (
-                      <>
+                      <View>
                         <Animated.View style={[styles.rowContainer, { opacity: fadeAnim }]}>
                           {paginatedSlots.slots.map((slot: TimeSlot, index: number) => {
                             const [timeFrom, timeTo] = slot.slot.split(" - ");
@@ -966,7 +980,7 @@ const CreateAppointmentScreen: React.FC = () => {
                             </TouchableOpacity>
                           </View>
                         )}
-                      </>
+                      </View>
                     ) : (
                       <View style={styles.noSlotsContainer}>
                         <Ionicons name="calendar-outline" size={40} color={COLORS.lightGray} />
@@ -1062,7 +1076,7 @@ const CreateAppointmentScreen: React.FC = () => {
                   </View>
                 )}
               </TouchableOpacity>
-            </>
+            </View>
           )}
         </Card>
       </ScrollView>
@@ -1098,6 +1112,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 20,
     backgroundColor: COLORS.background,
+    paddingTop: 30, // Add padding to avoid clipping header
   },
   noDataContainer: {
     alignItems: "center",
@@ -1111,9 +1126,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+    zIndex: 1000, // Ensure header stays on top
+    backgroundColor: COLORS.background, // Optional: Match background
   },
   backButton: {
     flexDirection: "row",
@@ -1134,7 +1151,10 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: COLORS.cardBackground,
-    padding: 16,
+    paddingTop: 11,
+    paddingRight: 16,
+    paddingBottom: 16,
+    paddingLeft: 16,
     borderRadius: 12,
     shadowColor: COLORS.textPrimary,
     shadowOffset: { width: 0, height: 4 },

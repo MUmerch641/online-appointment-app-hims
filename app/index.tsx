@@ -27,8 +27,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import Autocomplete from 'react-native-autocomplete-input'
 import AppointmentFlowService from '../services/appointmentFlowService'
 import { useDispatch } from 'react-redux'
-import { logout, updateHospitalData } from '../redux/slices/authSlice'
-import { isUserAuthenticated } from '../utils/authUtils'
+import { logout, updateHospitalData, updateToken } from '../redux/slices/authSlice'
+import { isUserAuthenticated, normalizeAuthValue } from '../utils/authUtils'
+import { persistor } from "@/redux/store"
 
 // API response interfaces
 interface ApiResponse {
@@ -202,8 +203,8 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
           const authData = JSON.parse(persistedAuth)
           if (isUserAuthenticated(authData.isAuthenticated) && authData.user) {
             setIsAuthenticated(true)
-            const userData = typeof authData.user === 'string' 
-              ? JSON.parse(authData.user) 
+            const userData = typeof authData.user === 'string'
+              ? JSON.parse(authData.user)
               : authData.user
             setUser(userData)
           } else {
@@ -233,8 +234,8 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
             const authData = JSON.parse(persistedAuth)
             if (isUserAuthenticated(authData.isAuthenticated) && authData.user) {
               setIsAuthenticated(true)
-              const userData = typeof authData.user === 'string' 
-                ? JSON.parse(authData.user) 
+              const userData = typeof authData.user === 'string'
+                ? JSON.parse(authData.user)
                 : authData.user
               setUser(userData)
             } else {
@@ -401,19 +402,19 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
         const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY)
         if (persistedAuth) {
           const authData = JSON.parse(persistedAuth)
-          
+
           if (isUserAuthenticated(authData.isAuthenticated) && authData.user) {
             // Check if there's a pending appointment flow
             const appointmentFlow = await AppointmentFlowService.getAppointmentFlow()
-            
+
             if (appointmentFlow && appointmentFlow.redirectAfterLogin) {
               // Get patient info from stored auth data
-              const userData = typeof authData.user === 'string' 
-                ? JSON.parse(authData.user) 
+              const userData = typeof authData.user === 'string'
+                ? JSON.parse(authData.user)
                 : authData.user
               const patientId = userData._id || null
               const patientName = userData.fullName || null
-              
+
               // Navigate directly to appointment creation screen
               router.push({
                 pathname: "/appointments/CreateAppointmentScreen",
@@ -426,7 +427,7 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
                   mrn: appointmentFlow.mrn || null,
                 },
               })
-              
+
               // Clear the stored appointment flow data
               await AppointmentFlowService.clearAppointmentFlow()
             }
@@ -477,8 +478,8 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
   const getTokenPerHospital = useCallback(async (hospitalId: string, authToken: string): Promise<string | null> => {
     try {
       // Strip double quotes from auth token if present
-      const cleanToken = authToken.startsWith('"') && authToken.endsWith('"') 
-        ? authToken.slice(1, -1) 
+      const cleanToken = authToken.startsWith('"') && authToken.endsWith('"')
+        ? authToken.slice(1, -1)
         : authToken;
 
       const response = await fetch(`${apiBaseUrl}${TOKEN_PER_HOSPITAL_API_ENDPOINT}/${hospitalId}`, {
@@ -524,85 +525,108 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
     }
   }, [])
 
-  // Handle hospital selection with token check
-  const handleSelectHospital = useCallback(async (hospital: Hospital): Promise<void> => {
-    try {
-      // Store hospital data in Redux for profile screen access
-      dispatch(updateHospitalData({
-        _id: hospital._id,
-        hospitalName: hospital.hospitalName,
-        hospitalLogoUrl: hospital.hospitalLogoUrl,
-        address: hospital.address,
-        city: hospital.city,
-      }))
-      
-      // Check if user has persisted auth token
-      const authToken = await checkAuthToken()
-      
-      if (authToken) {
-        // User has auth token, get token per hospital
-        const hospitalToken = await getTokenPerHospital(hospital._id, authToken)
-        
-        if (hospitalToken) {
-          // Update AsyncStorage with hospital token
-          try {
-            const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY)
-            if (persistedAuth) {
-              const authData = JSON.parse(persistedAuth)
-                authData.token = JSON.stringify(hospitalToken) // This adds quotes and escapes them properly
-                await AsyncStorage.setItem(AUTH_TOKEN_KEY, JSON.stringify(authData))
+const handleSelectHospital = useCallback(async (hospital: Hospital): Promise<void> => {
+  try {
+    dispatch(updateHospitalData({
+      _id: hospital._id,
+      hospitalName: hospital.hospitalName,
+      hospitalLogoUrl: hospital.hospitalLogoUrl,
+      address: hospital.address,
+      city: hospital.city,
+    }));
+
+    const authToken = await checkAuthToken();
+
+    if (authToken) {
+      const cleanAuthToken = authToken.startsWith('"') && authToken.endsWith('"')
+        ? authToken.slice(1, -1)
+        : authToken;
+
+      const hospitalToken = await getTokenPerHospital(hospital._id, cleanAuthToken);
+
+      if (hospitalToken) {
+        try {
+          const persistedAuth = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+
+          if (persistedAuth) {
+            let authData = JSON.parse(persistedAuth);
+
+            authData.token = hospitalToken;
+            if (authData.user) {
+              let userData = typeof authData.user === 'string' 
+                ? JSON.parse(authData.user) 
+                : authData.user;
+              userData.token = hospitalToken;
+              authData.user = JSON.stringify(userData);
             }
-          } catch (storageError) {
-            console.error('Error updating auth token in storage:', storageError)
+
+            // Update Redux state
+            dispatch(updateToken(hospitalToken));
+
+            // Pause persist to prevent overwrite
+            await persistor.pause();
+            await AsyncStorage.setItem(AUTH_TOKEN_KEY, JSON.stringify(authData));
+            await persistor.persist();
+            await persistor.flush(); // Ensure changes are written
+
+           
+            // Update local state for UI
+            setUser(typeof authData.user === 'string' ? JSON.parse(authData.user) : authData.user);
+            setIsAuthenticated(normalizeAuthValue(authData.isAuthenticated));
+          } else {
+            console.error('No persisted auth data found in AsyncStorage');
           }
 
-          // Navigate with hospital token (replacing auth token)
           router.push({
             pathname: "/Doctors",
             params: {
               hospitalId: hospital._id,
               hospitalName: hospital.hospitalName,
               cityName: selectedCity?.name || hospital.city,
-              authToken: hospitalToken, // Use hospital token instead of auth token
+              authToken: hospitalToken,
               hospitalToken: hospitalToken,
-            }
-          })
-        } else {
-          // Failed to get hospital token, navigate with original auth token
-          router.push({
-            pathname: "/Doctors",
-            params: {
-              hospitalId: hospital._id,
-              hospitalName: hospital.hospitalName,
-              cityName: selectedCity?.name || hospital.city,
-              authToken: authToken,
-            }
-          })
+            },
+          });
+
+
+        } catch (storageError) {
+          console.error('Error updating auth token in AsyncStorage:', storageError);
         }
       } else {
-        // No auth token, navigate without API call
+        console.error('No hospital token received');
         router.push({
           pathname: "/Doctors",
           params: {
             hospitalId: hospital._id,
             hospitalName: hospital.hospitalName,
             cityName: selectedCity?.name || hospital.city,
-          }
-        })
+            authToken: cleanAuthToken,
+          },
+        });
       }
-    } catch (error) {
-      console.error('Error in hospital selection:', error)
-      // Fallback navigation
+    } else {
+      console.error('No auth token found');
       router.push({
         pathname: "/Doctors",
         params: {
           hospitalId: hospital._id,
           hospitalName: hospital.hospitalName,
           cityName: selectedCity?.name || hospital.city,
-        }
-      })
+        },
+      });
     }
-  }, [selectedCity, checkAuthToken, getTokenPerHospital, dispatch])
+  } catch (error) {
+    console.error('Error in hospital selection:', error);
+    router.push({
+      pathname: "/Doctors",
+      params: {
+        hospitalId: hospital._id,
+        hospitalName: hospital.hospitalName,
+        cityName: selectedCity?.name || hospital.city,
+      },
+    });
+  }
+}, [selectedCity, checkAuthToken, getTokenPerHospital, dispatch]);
 
   // Memoized login handler
   const handleLogin = useCallback((): void => {
@@ -616,26 +640,26 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
       if (user?.profilePicture) {
         await AsyncStorage.setItem("persistentProfilePicture", user.profilePicture);
       }
-      
+
       // Use Redux logout action
       dispatch(logout());
-      
+
       // Remove specific auth-related items
       await AsyncStorage.multiRemove([
-        "persist:auth", 
-        "token", 
-        "refreshToken", 
+        "persist:auth",
+        "token",
+        "refreshToken",
         "profilePicture"
       ]);
-      
+
       // Update local state
       setIsAuthenticated(false)
       setUser(null)
       setShowProfileDropdown(false)
-      
+
       // Clear any pending appointment flow
       await AppointmentFlowService.clearAppointmentFlow()
-       
+
       // Navigate to login screen
       router.push("/auth/LoginScreen");
     } catch (error) {
@@ -688,20 +712,20 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
 
   // Memoized error state
   const renderError = useCallback(() => (
-  <View style={styles.errorContainer}>
-    <Feather name="wifi-off" size={60} color="#FF6B6B" />
-    <Text style={styles.errorTitle}>Connection Error</Text>
-    <Text style={styles.errorMessage}>
-      {error}
-      {"\n"}
-      {"Please check your internet connection and try again."}
-    </Text>
-    <TouchableOpacity style={styles.retryButton} onPress={fetchCitiesData}>
-      <Feather name="refresh-cw" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-      <Text style={styles.retryButtonText}>Retry</Text>
-    </TouchableOpacity>
-  </View>
-), [error, fetchCitiesData])
+    <View style={styles.errorContainer}>
+      <Feather name="wifi-off" size={60} color="#FF6B6B" />
+      <Text style={styles.errorTitle}>Connection Error</Text>
+      <Text style={styles.errorMessage}>
+        {error}
+        {"\n"}
+        {"Please check your internet connection and try again."}
+      </Text>
+      <TouchableOpacity style={styles.retryButton} onPress={fetchCitiesData}>
+        <Feather name="refresh-cw" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
+        <Text style={styles.retryButtonText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  ), [error, fetchCitiesData])
 
   // Memoized loading skeletons for hospitals
   const renderHospitalLoadingSkeletons = useMemo(() => (
@@ -805,47 +829,47 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar style="dark" />
 
-        <WelcomeModal />
+      <WelcomeModal />
 
-        {/* Profile Dropdown Modal - Only show when user is authenticated */}
-        {isUserAuthenticated(isAuthenticated) && (
-          <Modal
-            visible={showProfileDropdown}
-            transparent
-            animationType="fade"
-            onRequestClose={closeProfileDropdown}
-          >
-            <TouchableWithoutFeedback onPress={closeProfileDropdown}>
-              <View style={styles.profileModalOverlay}>
-                <TouchableWithoutFeedback>
-                  <View style={styles.profileModalContent}>
-                    <View style={styles.profileModalHeader}>
-                      <View style={styles.profileModalAvatar}>
-                        <Text style={styles.profileModalAvatarText}>
-                          {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
-                        </Text>
-                      </View>
-                      <Text style={styles.profileModalName} numberOfLines={1}>
-                        {user?.fullName || 'User'}
+      {/* Profile Dropdown Modal - Only show when user is authenticated */}
+      {isUserAuthenticated(isAuthenticated) && (
+        <Modal
+          visible={showProfileDropdown}
+          transparent
+          animationType="fade"
+          onRequestClose={closeProfileDropdown}
+        >
+          <TouchableWithoutFeedback onPress={closeProfileDropdown}>
+            <View style={styles.profileModalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.profileModalContent}>
+                  <View style={styles.profileModalHeader}>
+                    <View style={styles.profileModalAvatar}>
+                      <Text style={styles.profileModalAvatarText}>
+                        {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
                       </Text>
                     </View>
-                    
-                    <View style={styles.profileModalActions}>
-                      <TouchableOpacity 
-                        style={styles.profileModalLogoutButton}
-                        onPress={handleLogout}
-                        activeOpacity={0.7}
-                      >
-                        <Feather name="log-out" size={16} color="#FF6B6B" />
-                        <Text style={styles.profileModalLogoutText}>Logout</Text>
-                      </TouchableOpacity>
-                    </View>
+                    <Text style={styles.profileModalName} numberOfLines={1}>
+                      {user?.fullName || 'User'}
+                    </Text>
                   </View>
-                </TouchableWithoutFeedback>
-              </View>
-            </TouchableWithoutFeedback>
-          </Modal>
-        )}
+
+                  <View style={styles.profileModalActions}>
+                    <TouchableOpacity
+                      style={styles.profileModalLogoutButton}
+                      onPress={handleLogout}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="log-out" size={16} color="#FF6B6B" />
+                      <Text style={styles.profileModalLogoutText}>Logout</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
 
       <Animated.View
         style={[
@@ -876,8 +900,8 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
             {isUserAuthenticated(isAuthenticated) ? (
               // Profile dropdown when user is logged in
               <View style={styles.profileContainer}>
-                <TouchableOpacity 
-                  style={styles.profileButton} 
+                <TouchableOpacity
+                  style={styles.profileButton}
                   onPress={toggleProfileDropdown}
                   activeOpacity={0.7}
                 >
@@ -886,10 +910,10 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
                       {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
                     </Text>
                   </View>
-                  <Feather 
-                    name={showProfileDropdown ? "chevron-up" : "chevron-down"} 
-                    size={16} 
-                    color="#4A80F0" 
+                  <Feather
+                    name={showProfileDropdown ? "chevron-up" : "chevron-down"}
+                    size={16}
+                    color="#4A80F0"
                   />
                 </TouchableOpacity>
               </View>

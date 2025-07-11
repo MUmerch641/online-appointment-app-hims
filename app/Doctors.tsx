@@ -88,6 +88,7 @@ const DoctorsScreen: React.FC = () => {
     const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null)
     const selectedDoctor = useSelector((state: RootState) => state.auth.user?.doctor)
     const [SendToSlot, setSendToSlot] = useState<string>("")
+    const [dataForAppoitment, setdataForAppoitment] = useState<object>()
 
     const params = useLocalSearchParams()
 
@@ -97,12 +98,14 @@ const DoctorsScreen: React.FC = () => {
         const hospitalName = params.hospitalName as string
         const hospitalDataParam = params.hospitalData as string
         const sndToSlot = params.sendToSlot as string
+        const dataForAppoitment = params.dataForAppoitment as object
 
         if (hospitalDataParam) {
             try {
                 const hospitalData = JSON.parse(hospitalDataParam) as Hospital
                 setSelectedHospital(hospitalData)
                 setSendToSlot(sndToSlot)
+                setdataForAppoitment(dataForAppoitment)
                 
                 // Store hospital data in Redux for profile screen access
                 dispatch(updateHospitalData({
@@ -324,15 +327,11 @@ const DoctorsScreen: React.FC = () => {
 
                 // Navigate directly to appointment creation screen
            if (SendToSlot) {
+            console.log(dataForAppoitment)
                  router.push({
                     pathname: "/appointments/CreateAppointmentScreen",
                     params: {
-                        doctorId: selectedDoctor._id,
-                        doctorData: JSON.stringify(selectedDoctor),
-                        hospitalData: selectedHospital ? JSON.stringify(selectedHospital) : null,
-                        patientId,
-                        patientName,
-                        mrn: params.mrn || null,
+                        ...dataForAppoitment
                     },
                 })
            }

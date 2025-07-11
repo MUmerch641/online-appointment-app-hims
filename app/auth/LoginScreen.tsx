@@ -347,7 +347,7 @@ const LoginScreen = () => {
           await AppointmentFlowService.clearAppointmentFlow();
         } else {
           // Normal redirect to home
-          router.replace("/");
+          router.replace("/dashboard/HimsPatientScreen");
         }
       }
     };

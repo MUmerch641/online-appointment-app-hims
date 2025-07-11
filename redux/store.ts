@@ -1,13 +1,14 @@
+// store.ts
 import { configureStore } from "@reduxjs/toolkit";
 import { persistReducer, persistStore } from "redux-persist";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setupListeners } from "@reduxjs/toolkit/query";
-import { authApi } from "./api/authApi";
-import { appointmentApi } from "./api/appointmentApi";
-import { patientApi } from "./api/patientApi";  
 import authReducer from "./slices/authSlice";
 import userReducer from "./slices/userSlice";
-import patientReducer from "./slices/patientSlice";  
+import patientReducer from "./slices/patientSlice";
+import { authApi } from "./api/authApi";
+import { appointmentApi } from "./api/appointmentApi";
+import { patientApi } from "./api/patientApi";
 import { doctorApi } from "./api/doctorApi";
 import { timeSlotApi } from "./api/timeslotApi";
 
@@ -21,31 +22,30 @@ const persistedAuthReducer = persistReducer(persistConfig, authReducer);
 
 export const store = configureStore({
   reducer: {
-    auth: persistedAuthReducer, 
+    auth: persistedAuthReducer,
     user: userReducer,
-    patient: patientReducer, 
+    patient: patientReducer,
     [authApi.reducerPath]: authApi.reducer,
     [appointmentApi.reducerPath]: appointmentApi.reducer,
     [patientApi.reducerPath]: patientApi.reducer,
-    [doctorApi.reducerPath]: doctorApi.reducer,  
+    [doctorApi.reducerPath]: doctorApi.reducer,
     [timeSlotApi.reducerPath]: timeSlotApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
-        ignoredActions: ["persist/PERSIST", "persist/REHYDRATE"], 
+        ignoredActions: ["persist/PERSIST", "persist/REHYDRATE"],
       },
     }).concat(
-      authApi.middleware, 
+      authApi.middleware,
       appointmentApi.middleware,
-      patientApi.middleware ,
-      doctorApi.middleware,  
+      patientApi.middleware,
+      doctorApi.middleware,
       timeSlotApi.middleware
     ),
 });
 
 export const persistor = persistStore(store);
-
 setupListeners(store.dispatch);
 
 export type RootState = ReturnType<typeof store.getState>;

@@ -112,7 +112,7 @@ const HimsPatientScreen = () => {
   }, [searchKeyword]);
 
   // Map API data to Patient interface
-  const patients: Patient[] = apiResponse.data.map((patient) => ({
+  const patients: Patient[] = apiResponse?.data?.map((patient) => ({
     ...patient,
     phoneNumber: patient.phonNumber,
     mrn: patient.mrn || patient.himsNo,
@@ -194,7 +194,16 @@ const HimsPatientScreen = () => {
           hospitalName: selectedHospital.hospitalName,
           hospitalData: JSON.stringify(selectedHospital),
           cityName: selectedHospital.city,
-          sendToSlot: "true"
+          sendToSlot: "true",
+          dataForAppoitment: {
+            [isSearchMode ? 'patientId' : 'himsPatientId']: patient._id,
+            patientName: patient.patientName,
+            mrn: patient.mrn?.toString(),
+            phoneNumber: patient.phoneNumber || patient.phonNumber,
+            doctorId: selectedDoctor?._id,
+            doctorData: JSON.stringify(selectedDoctor),
+            hospitalData: selectedHospital ? JSON.stringify(selectedHospital) : undefined,
+          }
         },
       });
     }
@@ -250,18 +259,6 @@ const HimsPatientScreen = () => {
                 {isSearchMode ? 'Mrn' : 'HimsNo'}: {item.mrn}
               </Text>
             </View>
-            <View>
-            {isSearchMode && (
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleCreatHimsPatient(item)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="add" size={16} color={'#4CAF50'} />
-                <Text style={styles.buttonText}>{'Add to hims Patient'}</Text>
-              </TouchableOpacity>
-            )}
-            </View>
           </View>
         </View>
         <View style={styles.infoContainer}>
@@ -283,14 +280,30 @@ const HimsPatientScreen = () => {
           </View>
         </View>
         <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleCreateAppointment(item)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="repeat-outline" size={16} color={'#4CAF50'} />
-            <Text style={styles.buttonText}>{'Retake Appointment'}</Text>
-          </TouchableOpacity>
+
+          {isSearchMode ? (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleCreatHimsPatient(item)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={16} color={'#4CAF50'} />
+              <Text style={styles.buttonText}>{'Add to hims Patient'}</Text>
+            </TouchableOpacity>
+
+          ) : (
+
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleCreateAppointment(item)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="repeat-outline" size={16} color={'#4CAF50'} />
+              <Text style={styles.buttonText}>{'Retake Appointment'}</Text>
+            </TouchableOpacity>
+          )
+          }
+
           <TouchableOpacity
             style={[styles.actionButton, styles.editButton]}
             onPress={() => handleUpdate(item)}

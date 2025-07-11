@@ -1,5 +1,5 @@
+// slices/authSlice.ts
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { persistReducer } from "redux-persist";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RootState } from "../store";
 
@@ -26,8 +26,7 @@ interface Doctor {
   photoUrl?: string;
   designationDetail?: string;
   availableDays?: string[];
-      services?: Service[]   // <-- Add this line to match the usage
-
+  services?: Service[];
 }
 
 interface User {
@@ -36,10 +35,10 @@ interface User {
   mobileNo: string;
   token: string;
   profilePicture?: string;
-  projectId?: string;
-  refreshToken: any;
+  projectId?: string | null;
+  refreshToken?: string | null;
   hospital?: Hospital;
-  doctor?: Doctor | null; // Added doctor field
+  doctor?: Doctor | null;
 }
 
 interface AuthState {
@@ -62,13 +61,19 @@ const authSlice = createSlice({
       state.user = {
         ...action.payload,
         profilePicture: action.payload.profilePicture || state.user?.profilePicture || "",
-        doctor: null, // Initialize doctor as null when setting user
+        doctor: action.payload.doctor || null, // Preserve doctor if provided
       };
       state.token = action.payload.token;
       state.isAuthenticated = true;
 
       if (state.user?.profilePicture) {
         AsyncStorage.setItem("profilePicture", state.user.profilePicture);
+      }
+    },
+    updateToken: (state, action: PayloadAction<string>) => {
+      state.token = action.payload;
+      if (state.user) {
+        state.user.token = action.payload;
       }
     },
     updateProfilePicture: (state, action: PayloadAction<string>) => {
@@ -85,7 +90,7 @@ const authSlice = createSlice({
     },
     updateDoctorData: (state, action: PayloadAction<Doctor | null>) => {
       if (state.user) {
-        state.user.doctor = action.payload; // Set or clear doctor data
+        state.user.doctor = action.payload;
       }
     },
     logout: (state) => {
@@ -97,17 +102,10 @@ const authSlice = createSlice({
   },
 });
 
-export const { setUser, logout, updateProfilePicture, updateHospitalData, updateDoctorData } = authSlice.actions;
+export const { setUser, updateToken, updateProfilePicture, updateHospitalData, updateDoctorData, logout } = authSlice.actions;
 
-export const selectUser = (state: RootState) => state.auth.user;
-export const selectIsAuthenticated = (state: RootState) => state.auth.isAuthenticated;
-export const selectDoctor = (state: RootState) => state.auth.user?.doctor;
+export const selectUser = (state: RootState) => state?.auth?.user;
+export const selectIsAuthenticated = (state: RootState) => state?.auth?.isAuthenticated;
+export const selectDoctor = (state: RootState) => state?.auth?.user?.doctor;
 
-const persistConfig = {
-  key: "auth",
-  storage: AsyncStorage,
-  whitelist: ["user", "token", "isAuthenticated"],
-};
-
-const persistedReducer = persistReducer(persistConfig, authSlice.reducer);
-export default persistedReducer;
+export default authSlice.reducer;

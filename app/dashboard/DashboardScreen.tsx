@@ -33,6 +33,7 @@ import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import axios from "axios";
 import { API_BASE_URL } from "@/config/apiConfig";
+import Header from "@/components/reuseable/HospitalLogo";
 
 // Interfaces
 interface Patient {
@@ -1041,10 +1042,7 @@ const DashboardScreen = () => {
         style={[styles.header, { opacity: fadeAnim, transform: [{ translateY }] }]}
       >
         <View style={styles.greetingContainer}>
-          <Text style={styles.greeting}>Hello,</Text>
-          <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
-            {user?.fullName ?? "User"}
-          </Text>
+         <Header/>
         </View>
         <View style={styles.headerButtons}>
           <TouchableOpacity
@@ -1185,7 +1183,7 @@ const styles = StyleSheet.create({
   appointmentButton: {
     backgroundColor: COLORS.primary,
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 8,
   },
   appointmentText: {
@@ -1304,7 +1302,7 @@ const styles = StyleSheet.create({
   helpButton: {
     backgroundColor: COLORS.tokenPurple,
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 8,
     marginRight: 10,
     flexDirection: "row",
