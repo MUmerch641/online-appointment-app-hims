@@ -16,7 +16,7 @@ const getToken = async (): Promise<string> => {
       }
     }
   } catch {
-    // ignore error
+    console.error('Failed to retrieve token from AsyncStorage');
   }
   return '';
 };
@@ -78,6 +78,46 @@ export const createHimsPatient = async (patientData: {
   } catch (error) {
     if (axios.isAxiosError(error)) {
       throw new Error(error.response?.data?.message || 'Failed to create HIMS patient');
+    }
+    throw new Error('An unexpected error occurred');
+  }
+};
+
+export const searchHimsPatients = async (searchKeyword: string) => {
+  try {
+    const token = await getToken();
+    const response = await axios.get(
+      `${BASE_URL}/patient-registration/searchPatientByNameOrMrn/${encodeURIComponent(searchKeyword)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      throw new Error(error.response?.data?.message || 'Failed to search HIMS patients');
+    }
+    throw new Error('An unexpected error occurred');
+  }
+};
+
+export const shiftToHimsPatient = async (patientId: string) => {
+  try {
+    const token = await getToken();
+    const response = await axios.get(
+      `${BASE_URL}/hims-patients/shiftToHimsPatient/${encodeURIComponent(patientId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      throw new Error(error.response?.data?.message || 'Failed to shift to HIMS patient');
     }
     throw new Error('An unexpected error occurred');
   }

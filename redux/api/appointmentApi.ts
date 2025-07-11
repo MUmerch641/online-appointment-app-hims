@@ -34,7 +34,7 @@ export const appointmentApi = createApi({
     }),
     bookAppointment: builder.mutation({
       query: (appointmentData) => ({
-        url: "/online-appointment/create_appointment",
+        url: "/hims-appointment/create-hims-appointment",
         method: "POST",
         body: appointmentData,
       }),

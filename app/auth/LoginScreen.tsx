@@ -332,7 +332,7 @@ const LoginScreen = () => {
           
           // Navigate directly to appointment creation screen
           router.replace({
-            pathname: "/dashboard/PatientScreen",
+            pathname: "/dashboard/HimsPatientScreen",
             params: {
               doctorId: appointmentFlow.doctorId,
               doctorData: appointmentFlow.doctorData,
@@ -347,7 +347,7 @@ const LoginScreen = () => {
           await AppointmentFlowService.clearAppointmentFlow();
         } else {
           // Normal redirect to home
-          router.replace("/dashboard/PatientScreen");
+          router.replace("/");
         }
       }
     };

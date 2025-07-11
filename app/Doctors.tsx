@@ -18,13 +18,21 @@ import { StatusBar } from "expo-status-bar"
 import Constants from "expo-constants"
 import { router, useLocalSearchParams } from "expo-router"
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { Platform } from 'react-native'
 import AppointmentFlowService from '../services/appointmentFlowService'
 import { isUserAuthenticated } from '../utils/authUtils'
-import { useDispatch } from 'react-redux'
-import { updateHospitalData } from '../redux/slices/authSlice'
+import { useDispatch, useSelector } from 'react-redux'
+import { updateHospitalData, updateDoctorData } from '../redux/slices/authSlice'
+import { RootState } from '../redux/store'
 
 // Interfaces
+interface Service {
+  _id: string;
+  serviceName: string;
+  fee: number;
+  hospitalChargesInPercentage: number;
+  extra: Record<string, unknown>;
+}
+
 interface Doctor {
     _id: string
     fullName: string
@@ -34,6 +42,7 @@ interface Doctor {
     availableDays?: string[]
     email?: string
     phone?: string
+    services?: Service[]
 }
 
 interface DoctorsApiResponse {
@@ -77,6 +86,8 @@ const DoctorsScreen: React.FC = () => {
     const [loading, setLoading] = useState<boolean>(true)
     const [error, setError] = useState<string | null>(null)
     const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null)
+    const selectedDoctor = useSelector((state: RootState) => state.auth.user?.doctor)
+    const [SendToSlot, setSendToSlot] = useState<string>("")
 
     const params = useLocalSearchParams()
 
@@ -85,11 +96,13 @@ const DoctorsScreen: React.FC = () => {
         const hospitalId = params.hospitalId as string
         const hospitalName = params.hospitalName as string
         const hospitalDataParam = params.hospitalData as string
+        const sndToSlot = params.sendToSlot as string
 
         if (hospitalDataParam) {
             try {
                 const hospitalData = JSON.parse(hospitalDataParam) as Hospital
                 setSelectedHospital(hospitalData)
+                setSendToSlot(sndToSlot)
                 
                 // Store hospital data in Redux for profile screen access
                 dispatch(updateHospitalData({
@@ -99,6 +112,7 @@ const DoctorsScreen: React.FC = () => {
                     address: hospitalData.address,
                     city: hospitalData.city,
                 }))
+
                 
                 fetchDoctors(hospitalData._id)
             } catch (err) {
@@ -124,11 +138,14 @@ const DoctorsScreen: React.FC = () => {
             }))
             
             fetchDoctors(hospitalId)
-        } else {
+        }
+
+
+         else {
             setError("Hospital information is required")
             setLoading(false)
         }
-    }, [params.hospitalId, params.hospitalName, params.hospitalData])
+    }, [params.hospitalId, params.hospitalName, params.hospitalData, params.sendToSlot])
 
     // Filter doctors based on search query
     useEffect(() => {
@@ -188,6 +205,10 @@ const DoctorsScreen: React.FC = () => {
                     photoUrl: "https://example.com/doctor1.jpg",
                     designationDetail: "Senior Consultant Cardiologist with 15+ years experience",
                     availableDays: ["Monday", "Wednesday", "Friday"],
+                    services: [
+                        { _id: "s1", serviceName: "Cardiac Consultation", fee: 1500, hospitalChargesInPercentage: 10, extra: {} },
+                        { _id: "s2", serviceName: "Echocardiogram", fee: 3000, hospitalChargesInPercentage: 15, extra: {} },
+                    ],
                 },
                 {
                     _id: "2",
@@ -195,6 +216,10 @@ const DoctorsScreen: React.FC = () => {
                     specialization: "Pediatrician",
                     designationDetail: "Provides healthcare for infants, children, and adolescents",
                     availableDays: ["Tuesday", "Thursday", "Saturday"],
+                    services: [
+                        { _id: "s3", serviceName: "Pediatric Consultation", fee: 1200, hospitalChargesInPercentage: 10, extra: {} },
+                        { _id: "s4", serviceName: "Vaccination", fee: 800, hospitalChargesInPercentage: 5, extra: {} },
+                    ],
                 },
             ]
             setDoctors(mockDoctors)
@@ -240,6 +265,17 @@ const DoctorsScreen: React.FC = () => {
             const selectedDoctor = doctors.find((doc) => doc._id === doctorId)
 
             if (selectedDoctor) {
+                // Store doctor data including services in Redux
+                dispatch(updateDoctorData({
+                    _id: selectedDoctor._id,
+                    fullName: selectedDoctor.fullName,
+                    specialization: selectedDoctor.specialization,
+                    photoUrl: selectedDoctor.photoUrl,
+                    designationDetail: selectedDoctor.designationDetail,
+                    availableDays: selectedDoctor.availableDays,
+                    services: selectedDoctor.services || [],
+                }))
+
                 // Check user authentication
                 const isAuthenticated = await checkUserAuthentication()
 
@@ -287,8 +323,21 @@ const DoctorsScreen: React.FC = () => {
                 }
 
                 // Navigate directly to appointment creation screen
+           if (SendToSlot) {
+                 router.push({
+                    pathname: "/appointments/CreateAppointmentScreen",
+                    params: {
+                        doctorId: selectedDoctor._id,
+                        doctorData: JSON.stringify(selectedDoctor),
+                        hospitalData: selectedHospital ? JSON.stringify(selectedHospital) : null,
+                        patientId,
+                        patientName,
+                        mrn: params.mrn || null,
+                    },
+                })
+           }
                 router.push({
-                    pathname: "/dashboard/PatientScreen",
+                    pathname: "/dashboard/HimsPatientScreen",
                     params: {
                         doctorId: selectedDoctor._id,
                         doctorData: JSON.stringify(selectedDoctor),
@@ -308,6 +357,7 @@ const DoctorsScreen: React.FC = () => {
 
     // Handle back navigation
     const handleBack = () => {
+        dispatch(updateDoctorData(null)) // Clear doctor data on back navigation
         router.back()
     }
 

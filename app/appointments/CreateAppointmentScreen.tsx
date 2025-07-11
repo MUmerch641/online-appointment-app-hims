@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+"use client"
+
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,7 +14,7 @@ import {
   Image,
   Modal,
 } from "react-native";
-import {  Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Card } from "react-native-paper";
@@ -22,8 +24,13 @@ import {
   useGetAllTimeSlotsQuery,
   useBookAppointmentMutation,
 } from "../../redux/api/appointmentApi";
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState } from '../../redux/store';
+import { updateDoctorData } from '../../redux/slices/authSlice';
 import { COLORS } from "@/constants/Colors";
 import AppBottomNavigation from "@/components/AppBottomNavigation";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { isUserAuthenticated } from '../../utils/authUtils';
 
 // Define interfaces for the data structures
 interface Service {
@@ -55,6 +62,14 @@ interface Doctor {
   services?: Service[];
 }
 
+interface Hospital {
+  _id: string;
+  hospitalName: string;
+  address: string;
+  city: string;
+  hospitalLogoUrl: string | null;
+}
+
 interface Specialization {
   specializations: string;
   details: string;
@@ -69,13 +84,18 @@ interface TimeSlot {
 
 interface RouteParams {
   patientId?: string;
+  himsPatientId?: string;
   patientName?: string;
   mrn?: string;
+  doctorId?: string;
+  doctorData?: string;
+  hospitalData?: string;
 }
 
 interface AppointmentPayload {
   doctorId: string;
-  patientId: string;
+  patientId?: string;
+  himsPatientId?: string;
   date: string;
   slotId: string;
   services: string[];
@@ -85,6 +105,7 @@ interface AppointmentPayload {
   extra: Record<string, unknown>;
   discount: number;
   discountInPercentage: number;
+  projectId: string;
 }
 
 interface PaginatedSlots {
@@ -106,10 +127,30 @@ interface NavigationProps {
 
 const CreateAppointmentScreen: React.FC = () => {
   const router = useRouter();
+  const dispatch = useDispatch();
   const params = useLocalSearchParams();
-  const patientId = params.patientId as string || "";
-  const patientName = params.patientName as string || "";
-  const mrn = params.mrn as string || "";
+  let patientId = "";
+  let himsPatientId = "";
+
+  if (params.patientId) {
+    patientId = Array.isArray(params.patientId) ? params.patientId[0] : params.patientId;
+  } else if (params.himsPatientId) {
+    himsPatientId = Array.isArray(params.himsPatientId) ? params.himsPatientId[0] : params.himsPatientId;
+  }
+
+  const patientName = Array.isArray(params.patientName) ? params.patientName[0] : params.patientName || "";
+  const mrn = Array.isArray(params.mrn) ? params.mrn[0] : params.mrn || "";
+  const doctorId = Array.isArray(params.doctorId) ? params.doctorId[0] : params.doctorId || "";
+  const doctorData = params.doctorData ? JSON.parse(Array.isArray(params.doctorData) ? params.doctorData[0] : params.doctorData) as Doctor : null;
+  const hospitalData = params.hospitalData ? JSON.parse(Array.isArray(params.hospitalData) ? params.hospitalData[0] : params.hospitalData) as Hospital : null;
+
+  // Access doctor and hospital from Redux
+  const selectedDoctorRedux = useSelector((state: RootState) => state.auth.user?.doctor);
+  const selectedHospital = useSelector((state: RootState) => state.auth.user?.hospital);
+
+  // Use Redux doctor if available, otherwise fall back to params
+  const effectiveDoctor = selectedDoctorRedux || doctorData;
+  const effectiveDoctorId = effectiveDoctor?._id || doctorId;
 
   const CURRENT_DATE = new Date();
   const TODAY_DATE_STRING = CURRENT_DATE.toISOString().split("T")[0];
@@ -119,25 +160,28 @@ const CreateAppointmentScreen: React.FC = () => {
   const fadeAnim = useState(new Animated.Value(0))[0];
   const slideAnim = useState(new Animated.Value(100))[0];
   const spinAnim = useState(new Animated.Value(0))[0];
+  const [projectId, setProjectId] = useState<string>("");
 
   const { data: doctorsData } = useGetAllDoctorsQuery({});
   const { data: specializationsData } = useGetAllSpecializationsQuery({});
   const [bookAppointment] = useBookAppointmentMutation();
 
-  const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null);
+  const [selectedDoctor, setSelectedDoctor] = useState<string | null>(effectiveDoctorId || null);
   const [selectedSpecialization, setSelectedSpecialization] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [specializationDescription, setSpecializationDescription] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-  const [selectedService, setSelectedService] = useState<{ _id: string; serviceName: string; fee: number } | null>(null);
+  const [selectedService, setSelectedService] = useState<{ _id: string; serviceName: string; fee: number } | null>(
+    effectiveDoctor?.services && effectiveDoctor.services.length > 0 ? effectiveDoctor.services[0] : null
+  );
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [feeStatus, setFeeStatus] = useState<"paid" | "unpaid">("unpaid");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [animate, setAnimate] = useState<boolean>(false);
-  const [showDoctorSelection, setShowDoctorSelection] = useState<boolean>(true);
+  const [showDoctorSelection, setShowDoctorSelection] = useState<boolean>(!effectiveDoctor);
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [showServiceDropdown, setShowServiceDropdown] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(0);
@@ -149,8 +193,77 @@ const CreateAppointmentScreen: React.FC = () => {
   );
 
   const selectedDoctorDetails = useMemo(() => {
-    return doctorsData?.data?.find((doc: Doctor) => doc._id === selectedDoctor) || null;
-  }, [selectedDoctor, doctorsData?.data]);
+    return doctorsData?.data?.find((doc: Doctor) => doc._id === selectedDoctor) || effectiveDoctor || null;
+  }, [selectedDoctor, doctorsData?.data, effectiveDoctor]);
+
+  useEffect(() => {
+    const checkAuthAndInitialize = async () => {
+      const persistedAuth = await AsyncStorage.getItem('persist:auth');
+      if (!persistedAuth || !isUserAuthenticated(JSON.parse(persistedAuth).isAuthenticated)) {
+        Alert.alert('Authentication Required', 'Please log in to continue.');
+        router.push({
+          pathname: '/auth/LoginScreen',
+          params: {
+            redirectToAppointment: 'true',
+            patientId,
+            patientName,
+            mrn,
+            doctorId: effectiveDoctorId,
+            doctorData: effectiveDoctor ? JSON.stringify(effectiveDoctor) : undefined,
+            hospitalData: selectedHospital ? JSON.stringify(selectedHospital) : undefined,
+          },
+        });
+        return;
+      }
+
+      // If no doctor is selected, show doctor selection or redirect to DoctorsScreen
+      if (!effectiveDoctorId) {
+        if (!selectedHospital) {
+          Alert.alert('Error', 'No hospital selected. Please select a hospital first.');
+          router.push('/');
+          return;
+        }
+        setShowDoctorSelection(true);
+        // Optionally redirect to DoctorsScreen
+        router.push({
+          pathname: '/Doctors',
+          params: {
+            hospitalId: selectedHospital._id,
+            hospitalName: selectedHospital.hospitalName,
+            hospitalData: JSON.stringify(selectedHospital),
+            cityName: selectedHospital.city,
+          },
+        });
+        return;
+      }
+
+      // Set today's date by default if a doctor is selected
+      setSelectedDate(TODAY_DATE_STRING);
+    };
+
+    checkAuthAndInitialize();
+  }, [effectiveDoctorId, selectedHospital, patientId, patientName, mrn]);
+
+  useEffect(() => {
+    const fetchProjectId = async () => {
+      try {
+        const persistAuth = await AsyncStorage.getItem('persist:auth');
+        if (persistAuth) {
+          const authObj = JSON.parse(persistAuth);
+          if (authObj.user) {
+            const user = JSON.parse(authObj.user);
+            const hospital = user.hospital;
+            setProjectId(hospital._id || "");
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching projectId from AsyncStorage:", error);
+        setProjectId("");
+      }
+    };
+
+    fetchProjectId();
+  }, []);
 
   useEffect(() => {
     Animated.parallel([
@@ -305,28 +418,37 @@ const CreateAppointmentScreen: React.FC = () => {
     setSelectedDoctor(doctorId);
     setSelectedSlot(null);
 
-    // Set today's date by default
-    const todayString = TODAY_DATE_STRING;
-    setSelectedDate(todayString);
-
     if (!doctorId) {
       setAvailableDates([]);
       setShowDoctorSelection(true);
+      dispatch(updateDoctorData(null)); // Clear Redux doctor data
       return;
     }
 
     const doctorDetails = doctorsData?.data?.find((doc: Doctor) => doc._id === doctorId);
     if (!doctorDetails) {
       setAvailableDates([]);
+      setShowDoctorSelection(true);
       return;
     }
+
+    // Dispatch doctor data to Redux
+    dispatch(updateDoctorData({
+      _id: doctorDetails._id,
+      fullName: doctorDetails.fullName,
+      specialization: doctorDetails.specialization,
+      photoUrl: doctorDetails.photoUrl,
+      designationDetail: doctorDetails.designationDetail,
+      availableDays: doctorDetails.availableDays,
+      services: doctorDetails.services || [],
+    }));
 
     const availableDays = calculateAvailableDates(doctorDetails);
     setAvailableDates(availableDays);
     setShowDoctorSelection(false);
-
-    // Remove the direct fetchSlots call - the existing useEffect will handle this
-    // when both selectedDoctor and selectedDate are set3
+    setSelectedDate(TODAY_DATE_STRING);
+    // Set default service from Redux
+    setSelectedService(doctorDetails.services && doctorDetails.services.length > 0 ? doctorDetails.services[0] : null);
   };
 
   const handleBackToDoctorSelection = (): void => {
@@ -335,6 +457,12 @@ const CreateAppointmentScreen: React.FC = () => {
     setSelectedDate(null);
     setSelectedSlot(null);
     setAvailableDates([]);
+    dispatch(updateDoctorData(null)); // Clear Redux doctor data
+  };
+
+  const handleGoBack = (): void => {
+    dispatch(updateDoctorData(null)); // Clear doctor data on back navigation
+    router.back();
   };
 
   const isDateAvailable = (date: Date): boolean => {
@@ -404,8 +532,8 @@ const CreateAppointmentScreen: React.FC = () => {
   };
 
   const handleConfirmBooking = (): void => {
-    if (!selectedDoctor || !selectedDate || !selectedSlot || !patientId) {
-      Alert.alert("Incomplete Information", "Please select all required fields");
+    if (!selectedDoctor || !selectedDate || !selectedSlot || !selectedService) {
+      Alert.alert("Incomplete Information", "Please select all required fields, including a service.");
       return;
     }
     setShowConfirmModal(true);
@@ -415,25 +543,26 @@ const CreateAppointmentScreen: React.FC = () => {
     setShowConfirmModal(false);
     setIsLoading(true);
     try {
-      const serviceId = selectedService?._id || selectedDoctorDetails?.services?.[0]?._id || selectedSpecializationId;
-      const serviceFee = selectedService?.fee || selectedDoctorDetails?.services?.[0]?.fee || 0;
+      const serviceId = selectedService?._id;
+      const serviceFee = selectedService?.fee || 0;
 
-      if (!serviceId || !patientId) {
+      if (!serviceId) {
         throw new Error("Missing required appointment information");
       }
 
       const appointmentPayload: AppointmentPayload = {
         doctorId: selectedDoctor!,
-        patientId,
         date: selectedDate!,
         slotId: selectedSlot!,
-        services: serviceId ? [serviceId] : [],
+        services: [serviceId],
         feeStatus: feeStatus,
         appointmentDate: selectedDate!,
         fee: serviceFee + 100,
         extra: {},
         discount: 0,
         discountInPercentage: 0,
+        ...(patientId ? { patientId } : himsPatientId ? { himsPatientId } : {}),
+        projectId: projectId,
       };
       const response = await bookAppointment(appointmentPayload).unwrap();
       if (response.isSuccess && response.data) {
@@ -456,6 +585,7 @@ const CreateAppointmentScreen: React.FC = () => {
         Alert.alert("Error", response.message || "Failed to book appointment");
       }
     } catch (error) {
+      console.log('error',error)
       Alert.alert("Error", "An error occurred while booking the appointment");
     } finally {
       setIsLoading(false);
@@ -498,7 +628,7 @@ const CreateAppointmentScreen: React.FC = () => {
     <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.header, { transform: [{ translateY: slideAnim }] }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
             <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Create Appointment</Text>
@@ -610,6 +740,9 @@ const CreateAppointmentScreen: React.FC = () => {
                 <View style={styles.doctorHeaderRow}>
                   <View style={styles.doctorNameContainer}>
                     <Text style={styles.doctorSelectedName}>Doctor: {selectedDoctorDetails?.fullName}</Text>
+                    {selectedHospital && (
+                      <Text style={styles.hospitalName}>{selectedHospital.hospitalName}</Text>
+                    )}
                   </View>
                   <View style={styles.doctorImageSmallContainer}>
                     <Image source={doctorProfilePic} style={styles.doctorImageSmall} />
@@ -697,7 +830,7 @@ const CreateAppointmentScreen: React.FC = () => {
                   </View>
                 </View>
 
-                {selectedDoctor && selectedDoctorDetails?.services && selectedDoctorDetails.services.length > 0 && (
+                {selectedDoctorDetails?.services && selectedDoctorDetails.services.length > 0 && (
                   <View style={styles.serviceSelectContainer}>
                     <Text style={styles.serviceSelectLabel}>Select Service:</Text>
                     <View style={styles.serviceDropdownContainer}>
@@ -755,7 +888,7 @@ const CreateAppointmentScreen: React.FC = () => {
                     timeSlotsData?.data?.length ? (
                       <>
                         <Animated.View style={[styles.rowContainer, { opacity: fadeAnim }]}>
-                          {paginatedSlots.slots.map((slot: TimeSlot) => {
+                          {paginatedSlots.slots.map((slot: TimeSlot, index: number) => {
                             const [timeFrom, timeTo] = slot.slot.split(" - ");
                             const isSelected = selectedSlot === slot.slotId;
                             const isPastSlot = isTimeSlotPassed(timeFrom);
@@ -851,12 +984,20 @@ const CreateAppointmentScreen: React.FC = () => {
                     </View>
                   )}
                 </View>
+                {/* End of timeSlotContainer */}
               </View>
+              {/* End of formSection for Time Slot */}
 
               {selectedDoctorDetails?.services && selectedDoctorDetails.services.length > 0 && (
                 <View style={styles.formSection}>
                   <Text style={styles.sectionTitle}>Payment Details</Text>
                   <View style={styles.feeContainer}>
+                    <View style={styles.feeRow}>
+                      <Text style={styles.feeLabel}>Service:</Text>
+                      <Text style={styles.feeAmount}>
+                        {selectedService?.serviceName || selectedDoctorDetails.services[0].serviceName}
+                      </Text>
+                    </View>
                     <View style={styles.feeRow}>
                       <Text style={styles.feeLabel}>Service Fee:</Text>
                       <Text style={styles.feeAmount}>
@@ -897,10 +1038,10 @@ const CreateAppointmentScreen: React.FC = () => {
               <TouchableOpacity
                 style={[
                   styles.button,
-                  (!selectedDoctor || !selectedDate || !selectedSlot || isLoading) && styles.disabledButton,
+                  (!selectedDoctor || !selectedDate || !selectedSlot || !selectedService || isLoading) && styles.disabledButton,
                 ]}
                 onPress={handleConfirmBooking}
-                disabled={!selectedDoctor || !selectedDate || !selectedSlot || isLoading}
+                disabled={!selectedDoctor || !selectedDate || !selectedSlot || !selectedService || isLoading}
               >
                 {isLoading ? (
                   <Animated.View style={styles.buttonContent}>
@@ -925,8 +1066,7 @@ const CreateAppointmentScreen: React.FC = () => {
           )}
         </Card>
       </ScrollView>
-
-     <AppBottomNavigation/>
+      <AppBottomNavigation />
       <Modal visible={showConfirmModal} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -953,7 +1093,6 @@ const CreateAppointmentScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-
   container: {
     flexGrow: 1,
     paddingHorizontal: 16,
@@ -1054,7 +1193,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: COLORS.textPrimary,
-    marginBottom: 12,
+    marginBottom: 4,
+  },
+  hospitalName: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
   },
   doctorHeaderRow: {
     flexDirection: "row",

@@ -1,3 +1,5 @@
+"use client"
+
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -13,8 +15,11 @@ import {
 import { Card } from 'react-native-paper';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState } from '../../redux/store';
+import { updateDoctorData } from '../../redux/slices/authSlice';
 import { COLORS } from '@/constants/Colors';
-import { getMyHimsPatients } from '@/src/himsPatientApi';
+import { getMyHimsPatients, searchHimsPatients, shiftToHimsPatient } from '@/src/himsPatientApi';
 
 interface Patient {
   _id: string;
@@ -29,15 +34,22 @@ interface Patient {
   city: string;
   reference?: string;
   himsNo?: number;
-  mrn?: number; // Added to match usage in code
+  mrn?: number;
 }
 
 const HimsPatientScreen = () => {
   const router = useRouter();
+  const dispatch = useDispatch();
   const [searchKeyword, setSearchKeyword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [apiResponse, setApiResponse] = useState<{ data: Patient[] }>({ data: [] });
   const [error, setError] = useState<string | null>(null);
+  const [isSearchMode, setIsSearchMode] = useState(false);
+
+  // Access hospital and doctor data from Redux
+  const selectedHospital = useSelector((state: RootState) => state.auth.user?.hospital);
+  const selectedDoctor = useSelector((state: RootState) => state.auth.user?.doctor);
 
   // Fetch patients
   useEffect(() => {
@@ -62,28 +74,49 @@ const HimsPatientScreen = () => {
     };
   }, []);
 
+  // Search function
+  const performSearch = async (keyword: string) => {
+    if (!keyword.trim()) {
+      setIsSearchMode(false);
+      return;
+    }
+
+    setIsSearching(true);
+    setIsSearchMode(true);
+    setError(null);
+
+    try {
+      const searchResults = await searchHimsPatients(keyword);
+      setApiResponse(searchResults);
+    } catch (error: any) {
+      console.error('Error searching patients:', error);
+      setError(error.message || 'Failed to search patients');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Debounced search effect
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchKeyword.trim()) {
+        performSearch(searchKeyword);
+      } else {
+        setIsSearchMode(false);
+        setIsSearching(false);
+        clearSearch();
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchKeyword]);
+
   // Map API data to Patient interface
   const patients: Patient[] = apiResponse.data.map((patient) => ({
     ...patient,
     phoneNumber: patient.phonNumber,
-    mrn: patient.himsNo,
+    mrn: patient.mrn || patient.himsNo,
   }));
-
-  const calculateAge = (dob: string) => {
-    if (!dob) return 'N/A';
-    try {
-      const birthDate = new Date(dob);
-      const today = new Date();
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDiff = today.getMonth() - birthDate.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-        age--;
-      }
-      return age.toString();
-    } catch (e) {
-      return 'N/A';
-    }
-  };
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
@@ -101,28 +134,70 @@ const HimsPatientScreen = () => {
     }
   };
 
-  const filteredPatients = patients.filter(
-    (patient) =>
-      patient.patientName.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-      patient.cnic.includes(searchKeyword) ||
-      (patient.phoneNumber?.includes(searchKeyword) ?? false) ||
-      String(patient.mrn ?? '').includes(searchKeyword),
-  );
-
-  const handleCreateAppointment = (patient: Patient) => {
+  const handleCreatHimsPatient = async (patient: Patient) => {
     if (!patient || !patient._id) {
       Alert.alert('Error', 'Invalid patient data.');
       return;
     }
-    router.push({
-      pathname: '/appointments/CreateAppointmentScreen',
-      params: {
-        patientId: patient._id,
-        patientName: patient.patientName,
-        mrn: patient.mrn?.toString(),
-        phoneNumber: patient.phoneNumber || patient.phonNumber,
-      },
-    });
+    try {
+      const response = await shiftToHimsPatient(patient._id);
+      if (response.success) {
+        Alert.alert('Success', 'Patient successfully added to HIMS.');
+        setSearchKeyword('');
+        setIsSearchMode(false);
+        setIsSearching(false);
+        setError(null);
+        setIsLoading(true);
+        const res = await getMyHimsPatients();
+        setApiResponse(res);
+      } else {
+        Alert.alert('Error', response.message || 'Failed to add patient to HIMS.');
+      }
+    } catch (error: any) {
+      console.error('Error adding patient to HIMS:', error);
+      Alert.alert('Error', error.message || 'Failed to add patient to HIMS.');
+    }
+  };
+
+  const handleCreateAppointment = async (patient: Patient) => {
+    if (!patient || !patient._id) {
+      Alert.alert('Error', 'Invalid patient data.');
+      return;
+    }
+
+    // Check if a doctor is selected in Redux
+    if (selectedDoctor) {
+      // Navigate to CreateAppointmentScreen with doctor data from Redux
+      router.push({
+        pathname: '/appointments/CreateAppointmentScreen',
+        params: {
+          [isSearchMode ? 'patientId' : 'himsPatientId']: patient._id,
+          patientName: patient.patientName,
+          mrn: patient.mrn?.toString(),
+          phoneNumber: patient.phoneNumber || patient.phonNumber,
+          doctorId: selectedDoctor._id,
+          doctorData: JSON.stringify(selectedDoctor),
+          hospitalData: selectedHospital ? JSON.stringify(selectedHospital) : undefined,
+        },
+      });
+    } else {
+      // No doctor selected, navigate to DoctorsScreen with hospital data
+      if (!selectedHospital) {
+        Alert.alert('Error', 'No hospital selected. Please select a hospital first.');
+        router.push('/');
+        return;
+      }
+      router.push({
+        pathname: '/Doctors',
+        params: {
+          hospitalId: selectedHospital._id,
+          hospitalName: selectedHospital.hospitalName,
+          hospitalData: JSON.stringify(selectedHospital),
+          cityName: selectedHospital.city,
+          sendToSlot: "true"
+        },
+      });
+    }
   };
 
   const handleUpdate = (patient: Patient) => {
@@ -137,6 +212,7 @@ const HimsPatientScreen = () => {
   };
 
   const handleGoBack = () => {
+    dispatch(updateDoctorData(null)); // Clear doctor data on back navigation
     router.back();
   };
 
@@ -144,8 +220,22 @@ const HimsPatientScreen = () => {
     router.push('/registration/CreateHimsPatient');
   };
 
-  const clearSearch = () => {
+  const clearSearch = async () => {
     setSearchKeyword('');
+    setIsSearchMode(false);
+    setIsSearching(false);
+    setError(null);
+
+    setIsLoading(true);
+    try {
+      const res = await getMyHimsPatients();
+      setApiResponse(res);
+    } catch (error: any) {
+      console.error('Error fetching patients:', error);
+      setError(error.message || 'Failed to fetch patients');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const renderPatientCard = ({ item }: { item: Patient }) => {
@@ -153,11 +243,26 @@ const HimsPatientScreen = () => {
     return (
       <Card style={styles.card}>
         <View style={styles.patientHeader}>
-          <Text style={styles.patientName}>{item.patientName}</Text>
-          <Text style={styles.patientMeta}>
-            {/* Age: {calculateAge(item.dob)} */}
-             HimsNo: {item.mrn || 'N/A'}
-          </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={styles.patientName}>{item.patientName}</Text>
+              <Text style={styles.patientMeta}>
+                {isSearchMode ? 'Mrn' : 'HimsNo'}: {item.mrn}
+              </Text>
+            </View>
+            <View>
+            {isSearchMode && (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleCreatHimsPatient(item)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add" size={16} color={'#4CAF50'} />
+                <Text style={styles.buttonText}>{'Add to hims Patient'}</Text>
+              </TouchableOpacity>
+            )}
+            </View>
+          </View>
         </View>
         <View style={styles.infoContainer}>
           <View style={styles.infoRow}>
@@ -184,7 +289,7 @@ const HimsPatientScreen = () => {
             activeOpacity={0.7}
           >
             <Ionicons name="repeat-outline" size={16} color={'#4CAF50'} />
-            <Text style={styles.buttonText}>Retake Appointment</Text>
+            <Text style={styles.buttonText}>{'Retake Appointment'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionButton, styles.editButton]}
@@ -236,14 +341,17 @@ const HimsPatientScreen = () => {
             <Ionicons name="alert-circle-outline" size={64} color={COLORS.danger} />
             <Text style={[styles.emptyText, { color: COLORS.danger }]}>Error loading patients</Text>
             <Text style={styles.emptySubtext}>{error}</Text>
-            <TouchableOpacity style={[styles.appointmentButton, { marginTop: 20 }]} onPress={() => {
-              setIsLoading(true);
-              setError(null);
-              getMyHimsPatients()
-                .then((res) => setApiResponse(res))
-                .catch((err) => setError(err.message || 'Failed to fetch patients'))
-                .finally(() => setIsLoading(false));
-            }}>
+            <TouchableOpacity
+              style={[styles.appointmentButton, { marginTop: 20 }]}
+              onPress={() => {
+                setIsLoading(true);
+                setError(null);
+                getMyHimsPatients()
+                  .then((res) => setApiResponse(res))
+                  .catch((err) => setError(err.message || 'Failed to fetch patients'))
+                  .finally(() => setIsLoading(false));
+              }}
+            >
               <Text style={styles.appointmentText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -290,7 +398,7 @@ const HimsPatientScreen = () => {
               <Feather name="search" size={18} color={COLORS.textSecondary} style={styles.searchIcon} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search by name, ID or phone..."
+                placeholder="Search Patient by name or mrn.."
                 placeholderTextColor={COLORS.placeholder}
                 value={searchKeyword}
                 onChangeText={setSearchKeyword}
@@ -305,14 +413,16 @@ const HimsPatientScreen = () => {
             </View>
           </View>
         </View>
-        {isLoading ? (
+        {isLoading || isSearching ? (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.loadingText}>Loading patients...</Text>
+            <Text style={styles.loadingText}>
+              {isSearching ? 'Searching patients...' : 'Loading patients...'}
+            </Text>
           </View>
-        ) : filteredPatients.length > 0 ? (
+        ) : patients.length > 0 ? (
           <FlatList
-            data={filteredPatients}
+            data={patients}
             keyExtractor={(item) => item._id}
             renderItem={renderPatientCard}
             contentContainerStyle={styles.listContainer}
@@ -501,6 +611,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#388E3C',
   },
+  //  HimsActionButton: {
+  //   flex: 1,
+  //   backgroundColor: 'transparent',
+  //   flexDirection: 'row',
+  //   alignItems: 'center',
+  //   justifyContent: 'center',
+  //   paddingVertical: 5,
+  //   borderRadius: 8,
+  //   gap: 6,
+  //   borderWidth: 1,
+  //   borderColor: '#388E3C',
+  // },
   editButton: {
     borderColor: 'grey',
   },

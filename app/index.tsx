@@ -688,19 +688,20 @@ const SelectCityScreen: React.FC<SelectCityScreenProps> = ({ navigation }) => {
 
   // Memoized error state
   const renderError = useCallback(() => (
-    <View style={styles.errorContainer}>
-      <Feather name="wifi-off" size={60} color="#FF6B6B" />
-      <Text style={styles.errorTitle}>Connection Error</Text>
-      <Text style={styles.errorMessage}>
-        {error}
-        {"\n"}Please check your internet connection and try again.
-      </Text>
-      <TouchableOpacity style={styles.retryButton} onPress={fetchCitiesData}>
-        <Feather name="refresh-cw" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-        <Text style={styles.retryButtonText}>Retry</Text>
-      </TouchableOpacity>
-    </View>
-  ), [error, fetchCitiesData])
+  <View style={styles.errorContainer}>
+    <Feather name="wifi-off" size={60} color="#FF6B6B" />
+    <Text style={styles.errorTitle}>Connection Error</Text>
+    <Text style={styles.errorMessage}>
+      {error}
+      {"\n"}
+      {"Please check your internet connection and try again."}
+    </Text>
+    <TouchableOpacity style={styles.retryButton} onPress={fetchCitiesData}>
+      <Feather name="refresh-cw" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
+      <Text style={styles.retryButtonText}>Retry</Text>
+    </TouchableOpacity>
+  </View>
+), [error, fetchCitiesData])
 
   // Memoized loading skeletons for hospitals
   const renderHospitalLoadingSkeletons = useMemo(() => (
